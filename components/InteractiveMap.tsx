@@ -1,5 +1,13 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Alert } from 'react-native';
+import React, { useState, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Dimensions,
+  Alert,
+  PanResponder,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Place } from '../types';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
@@ -14,6 +22,9 @@ interface InteractiveMapProps {
   onRecenter?: () => void;
   destinationName?: string;
   isNavigationMode?: boolean;
+  userProgress?: number; // 0.0 to 1.0
+  userHeading?: number; // 0 to 360 degrees
+  showSimulationBadge?: boolean;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -27,11 +38,40 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   onRecenter,
   destinationName = APP_CONFIG.defaultDestination.name,
   isNavigationMode = false,
+  userProgress = 0,
+  userHeading = 45,
+  showSimulationBadge = false,
 }) => {
   const [activeMarker, setActiveMarker] = useState<Place | null>(selectedPlace || null);
   const [mapLayer, setMapLayer] = useState<'STANDARD' | 'TRAFFIC' | 'SATELLITE'>('STANDARD');
   const [zoomLevel, setZoomLevel] = useState<number>(1.0);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // 2D Pan state for touch dragging around map
+  const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const panRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return Math.abs(gestureState.dx) > 3 || Math.abs(gestureState.dy) > 3;
+      },
+      onPanResponderMove: (_, gestureState) => {
+        setPanOffset({
+          x: panRef.current.x + gestureState.dx,
+          y: panRef.current.y + gestureState.dy,
+        });
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        panRef.current = {
+          x: panRef.current.x + gestureState.dx,
+          y: panRef.current.y + gestureState.dy,
+        };
+        setPanOffset({ ...panRef.current });
+      },
+    })
+  ).current;
 
   const showMapToast = (msg: string) => {
     setToastMessage(msg);
@@ -49,7 +89,10 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   };
 
   const handleRecenter = () => {
-    showMapToast('📍 Camera re-centered on forward vector (45° NE)');
+    panRef.current = { x: 0, y: 0 };
+    setPanOffset({ x: 0, y: 0 });
+    setZoomLevel(1.0);
+    showMapToast('📍 Camera re-centered on vehicle');
     if (onRecenter) {
       onRecenter();
     } else {
@@ -74,7 +117,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
   const handleZoomIn = () => {
     setZoomLevel((prev) => {
-      const next = Math.min(1.3, prev + 0.15);
+      const next = Math.min(1.4, prev + 0.15);
       showMapToast(`Zoom: ${next.toFixed(2)}x (Street Level)`);
       return next;
     });
@@ -82,7 +125,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
   const handleZoomOut = () => {
     setZoomLevel((prev) => {
-      const next = Math.max(0.75, prev - 0.15);
+      const next = Math.max(0.7, prev - 0.15);
       showMapToast(`Zoom: ${next.toFixed(2)}x (Corridor Level)`);
       return next;
     });
@@ -99,14 +142,35 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   const isDark = mapLayer === 'SATELLITE';
   const isTraffic = mapLayer === 'TRAFFIC';
 
+  // Calculate dynamic simulated user position along route corridor
+  const progress = Math.max(0, Math.min(1, userProgress));
+  const userLeft = 75 + progress * (SCREEN_WIDTH - 160);
+  const userTop = Math.max(25, (height - 65) - progress * (height - 90));
+  const headingAngle = userHeading ?? 45;
+
   return (
     <View style={[styles.mapContainer, { height }, isDark && styles.mapContainerDark]}>
-      {/* Simulated Map Background with Zoom Scale Transform */}
+      {/* Development Simulation Mode Badge */}
+      {(isNavigationMode || showSimulationBadge) && (
+        <View style={styles.simBadge}>
+          <View style={styles.simBadgePulseDot} />
+          <Text style={styles.simBadgeText}>DEV SIMULATION: ACTIVE</Text>
+        </View>
+      )}
+
+      {/* Simulated Map Canvas with Pan & Zoom Transform */}
       <View
+        {...panResponder.panHandlers}
         style={[
           styles.mapCanvas,
           isDark && styles.mapCanvasDark,
-          { transform: [{ scale: zoomLevel }] },
+          {
+            transform: [
+              { translateX: panOffset.x },
+              { translateY: panOffset.y },
+              { scale: zoomLevel },
+            ],
+          },
         ]}
       >
         {/* Secondary Cross Roads */}
@@ -145,15 +209,40 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
           </Text>
         </View>
 
-        {/* User Location Marker with Directional Heading Cone */}
-        <View style={styles.userMarkerContainer}>
-          <View style={styles.headingCone} />
+        {/* User Location Marker with Dynamic Movement & Heading Cone */}
+        <View
+          style={[
+            styles.userMarkerContainer,
+            {
+              top: userTop,
+              left: userLeft,
+              bottom: undefined,
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.headingCone,
+              {
+                transform: [{ rotate: `${headingAngle}deg` }, { scaleX: 0.6 }],
+              },
+            ]}
+          />
           <View style={styles.userPulseRing} />
           <View style={styles.userCore}>
-            <Ionicons name="navigate" size={14} color="#FFFFFF" style={styles.userHeadingIcon} />
+            <Ionicons
+              name="navigate"
+              size={14}
+              color="#FFFFFF"
+              style={{ transform: [{ rotate: `${headingAngle}deg` }] }}
+            />
           </View>
           <View style={styles.userLabelBubble}>
-            <Text style={styles.userLabelText}>You (45° NE)</Text>
+            <Text style={styles.userLabelText}>
+              {isNavigationMode
+                ? `You (${Math.round(headingAngle)}° • ${(progress * 100).toFixed(0)}%)`
+                : `You (${Math.round(headingAngle)}° NE)`}
+            </Text>
           </View>
         </View>
 
@@ -773,5 +862,33 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
     fontSize: 11,
     fontWeight: '700',
+  },
+  /* Development Simulation Mode Badge */
+  simBadge: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    zIndex: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(15, 23, 42, 0.88)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+  },
+  simBadgePulseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#38BDF8',
+  },
+  simBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#38BDF8',
+    letterSpacing: 0.5,
   },
 });

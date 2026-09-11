@@ -2,11 +2,17 @@ import { UserLocation, Coordinates } from '../types';
 import { APP_CONFIG } from '../constants/config';
 
 /**
- * Service to provide current user location, heading, and travel direction.
- * In this version, returns realistic simulated location and heading.
+ * Interface defining the Location Service contract.
  * Ready to be swapped with `expo-location` GPS tracking in production.
  */
-class LocationService {
+export interface ILocationService {
+  getCurrentLocation(): Promise<UserLocation>;
+  updateSimulatedLocation(updates: Partial<UserLocation>): void;
+  getHeadingDescription(): string;
+  getCoordinates(): Coordinates;
+}
+
+class LocationService implements ILocationService {
   private currentLocation: UserLocation = {
     ...APP_CONFIG.defaultLocation,
   };

@@ -3,6 +3,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppSettings, UserReport, OfflineArea, Place, RouteOption } from '../types';
 import { APP_CONFIG } from '../constants/config';
 
+export interface RecentRouteItem {
+  id: string;
+  destinationName: string;
+  routeTitle: string;
+  distanceKm: number;
+  estimatedMinutes: number;
+  timestamp: string;
+}
+
 interface AppContextType {
   settings: AppSettings;
   updateSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => Promise<void>;
@@ -13,6 +22,10 @@ interface AppContextType {
   recentSearches: string[];
   addRecentSearch: (query: string) => Promise<void>;
   clearRecentSearches: () => Promise<void>;
+
+  recentRoutes: RecentRouteItem[];
+  addRecentRoute: (route: Omit<RecentRouteItem, 'id' | 'timestamp'>) => Promise<void>;
+  clearRecentRoutes: () => Promise<void>;
   
   offlineAreas: OfflineArea[];
   toggleOfflineDownload: (areaId: string) => Promise<void>;
@@ -96,6 +109,25 @@ const INITIAL_REPORTS: UserReport[] = [
   },
 ];
 
+const INITIAL_RECENT_ROUTES: RecentRouteItem[] = [
+  {
+    id: 'route-001',
+    destinationName: 'Gachibowli Tech Campus',
+    routeTitle: 'Fastest Route via Hitec City',
+    distanceKm: 2.1,
+    estimatedMinutes: 8,
+    timestamp: 'Today, 2:15 PM',
+  },
+  {
+    id: 'route-002',
+    destinationName: 'Medicover Hospital',
+    routeTitle: 'Lowest Deviation Corridor',
+    distanceKm: 0.9,
+    estimatedMinutes: 4,
+    timestamp: 'Yesterday',
+  },
+];
+
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -107,6 +139,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     'HDFC ATM',
     'Medicover Hospital',
   ]);
+  const [recentRoutes, setRecentRoutes] = useState<RecentRouteItem[]>(INITIAL_RECENT_ROUTES);
   const [offlineAreas, setOfflineAreas] = useState<OfflineArea[]>(INITIAL_OFFLINE_AREAS);
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
   const [activeDestination, setActiveDestination] = useState(APP_CONFIG.defaultDestination);
@@ -125,11 +158,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const loadPersistedData = async () => {
     try {
-      const [savedSettings, savedReports, savedSearches, savedOnboarding] = await Promise.all([
+      const [savedSettings, savedReports, savedSearches, savedOnboarding, savedRoutes] = await Promise.all([
         AsyncStorage.getItem(APP_CONFIG.storageKeys.SETTINGS),
         AsyncStorage.getItem(APP_CONFIG.storageKeys.USER_REPORTS),
         AsyncStorage.getItem(APP_CONFIG.storageKeys.RECENT_SEARCHES),
         AsyncStorage.getItem(APP_CONFIG.storageKeys.ONBOARDING_DONE),
+        AsyncStorage.getItem(APP_CONFIG.storageKeys.RECENT_ROUTES),
       ]);
 
       if (savedSettings) {
@@ -148,6 +182,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const parsedSearches = JSON.parse(savedSearches);
         if (Array.isArray(parsedSearches)) {
           setRecentSearches(parsedSearches);
+        }
+      }
+      if (savedRoutes) {
+        const parsedRoutes = JSON.parse(savedRoutes);
+        if (Array.isArray(parsedRoutes)) {
+          setRecentRoutes(parsedRoutes);
         }
       }
       if (savedOnboarding) {
@@ -222,6 +262,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const addRecentRoute = async (
+    routeData: Omit<RecentRouteItem, 'id' | 'timestamp'>
+  ): Promise<void> => {
+    const newRoute: RecentRouteItem = {
+      ...routeData,
+      id: `route-${Date.now()}`,
+      timestamp: 'Just now',
+    };
+    const current = Array.isArray(recentRoutes) ? recentRoutes : [];
+    const filtered = current.filter((r) => r.destinationName !== routeData.destinationName);
+    const updated = [newRoute, ...filtered].slice(0, 10);
+    setRecentRoutes(updated);
+    try {
+      await AsyncStorage.setItem(
+        APP_CONFIG.storageKeys.RECENT_ROUTES,
+        JSON.stringify(updated)
+      );
+    } catch (e) {
+      console.warn('Failed saving recent route', e);
+    }
+  };
+
+  const clearRecentRoutes = async (): Promise<void> => {
+    setRecentRoutes([]);
+    try {
+      await AsyncStorage.removeItem(APP_CONFIG.storageKeys.RECENT_ROUTES);
+    } catch (e) {
+      console.warn('Failed clearing recent routes', e);
+    }
+  };
+
   const toggleOfflineDownload = async (areaId: string): Promise<void> => {
     const current = Array.isArray(offlineAreas) ? offlineAreas : [];
     const updated = current.map((area) => {
@@ -263,6 +334,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         recentSearches,
         addRecentSearch,
         clearRecentSearches,
+        recentRoutes,
+        addRecentRoute,
+        clearRecentRoutes,
         offlineAreas,
         toggleOfflineDownload,
         selectedPlace,

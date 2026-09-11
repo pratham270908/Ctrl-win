@@ -60,29 +60,21 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterScroll}
         >
-          <TouchableOpacity
-            style={[styles.filterChip, activeCategory === 'ALL' && styles.filterChipActive]}
-            onPress={() => setActiveCategory('ALL')}
-          >
-            <Text
-              style={[
-                styles.filterChipText,
-                activeCategory === 'ALL' && styles.filterChipTextActive,
-              ]}
-            >
-              All Ahead
-            </Text>
-          </TouchableOpacity>
-
-          {CATEGORIES.map((cat) => {
+          {[
+            { id: 'ALL' as const, name: 'All Ahead' },
+            { id: 'Coffee' as const, name: 'Coffee', emoji: '☕' },
+            { id: 'Petrol' as const, name: 'Petrol', emoji: '⛽' },
+            { id: 'ATM' as const, name: 'ATM', emoji: '🏧' },
+          ].map((cat) => {
             const isActive = activeCategory === cat.id;
             return (
               <TouchableOpacity
                 key={cat.id}
                 style={[styles.filterChip, isActive && styles.filterChipActive]}
                 onPress={() => setActiveCategory(cat.id)}
+                activeOpacity={0.75}
               >
-                <Text style={styles.chipEmoji}>{cat.emoji}</Text>
+                {'emoji' in cat && <Text style={styles.chipEmoji}>{cat.emoji}</Text>}
                 <Text
                   style={[styles.filterChipText, isActive && styles.filterChipTextActive]}
                 >

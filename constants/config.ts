@@ -28,5 +28,6 @@ export const APP_CONFIG = {
     RECENT_SEARCHES: '@smart_dir_recent_searches_v1',
     USER_REPORTS: '@smart_dir_user_reports_v1',
     OFFLINE_AREAS: '@smart_dir_offline_areas_v1',
+    RECENT_ROUTES: '@smart_dir_recent_routes_v1',
   },
 };

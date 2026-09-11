@@ -11,7 +11,17 @@ export interface TurnInstruction {
   isDestination?: boolean;
 }
 
-class DirectionsService {
+/**
+ * Interface defining the Directions & Routing Service contract.
+ * Allows swapping mock/prototype routes with Google Routes/Directions API later.
+ */
+export interface IDirectionsService {
+  getRouteOptions(origin?: Coordinates, destination?: Coordinates): Promise<RouteOption[]>;
+  getTurnByTurnInstructions(): Promise<TurnInstruction[]>;
+  getPublicTransitRoutes(): Promise<PublicTransitRoute[]>;
+}
+
+class DirectionsService implements IDirectionsService {
   /**
    * Retrieves available route options for destination
    */

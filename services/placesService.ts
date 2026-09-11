@@ -13,7 +13,22 @@ export interface GroupedPlacesResult {
 
 export type RecommendedFilter = 'ALL' | 'AHEAD_ONLY' | 'OPEN_NOW' | 'TOP_RATED' | 'UNDER_1KM';
 
-class PlacesService {
+/**
+ * Interface defining the Places Service contract.
+ * Allows swapping mock/prototype data with Google Places API without rewriting application components.
+ */
+export interface IPlacesService {
+  getPlacesForHeading(headingAngle?: number, speedKmh?: number): Place[];
+  getRecommendedPlaces(headingAngle?: number, speedKmh?: number, filterOption?: RecommendedFilter): Promise<Place[]>;
+  getRouteRecommendations(destinationPlace?: Place | null, activeRoute?: RouteOption | null, headingAngle?: number, speedKmh?: number, filterOption?: RecommendedFilter): Promise<Place[]>;
+  getPlacesByCategory(category: PlaceCategory, sortCriteria?: SortCriteria): Promise<Place[]>;
+  searchPlaces(query: string, sortCriteria?: SortCriteria): Promise<Place[]>;
+  getGroupedResults(categoryOrQuery: string, sortCriteria?: SortCriteria): Promise<GroupedPlacesResult>;
+  getPlaceById(id: string): Promise<Place | null>;
+  getEmergencyPlaces(): Promise<Place[]>;
+}
+
+class PlacesService implements IPlacesService {
   private places: Place[] = [...MOCK_PLACES];
 
   /**

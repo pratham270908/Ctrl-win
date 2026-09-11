@@ -58,6 +58,7 @@ const MainNavigator: React.FC = () => {
     activeDestinationPlace,
     setActiveDestinationPlace,
     clearActiveRoute,
+    addRecentRoute,
   } = useApp();
 
   const [currentScreen, setCurrentScreen] = useState<AppScreen>('SPLASH');
@@ -119,6 +120,12 @@ const MainNavigator: React.FC = () => {
     if (selectedPlace) {
       setActiveDestinationPlace(selectedPlace);
     }
+    addRecentRoute({
+      destinationName: selectedPlace?.name || 'Gachibowli Tech Campus',
+      routeTitle: route.title,
+      distanceKm: route.distanceKm,
+      estimatedMinutes: route.estimatedMinutes,
+    });
     setCurrentScreen('NAVIGATION');
   };
 
@@ -128,6 +135,12 @@ const MainNavigator: React.FC = () => {
     if (selectedPlace) {
       setActiveDestinationPlace(selectedPlace);
     }
+    addRecentRoute({
+      destinationName: selectedPlace?.name || 'Gachibowli Tech Campus',
+      routeTitle: r.title,
+      distanceKm: r.distanceKm,
+      estimatedMinutes: r.estimatedMinutes,
+    });
     setCurrentScreen('NAVIGATION');
   };
 
@@ -190,7 +203,9 @@ const MainNavigator: React.FC = () => {
           )}
 
           {currentTab === 'activity' && (
-            <ReportsScreen />
+            <ReportsScreen
+              onSelectSearch={(q) => handleSearchQuerySelect(q)}
+            />
           )}
 
           {currentTab === 'profile' && (

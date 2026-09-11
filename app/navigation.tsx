@@ -10,9 +10,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { InteractiveMap } from '../components/InteractiveMap';
 import { directionsService, TurnInstruction } from '../services/directionsService';
+import { locationService } from '../services/locationService';
+import { recommendationService } from '../services/recommendationService';
+import { useApp } from '../store/AppContext';
 import { Place, RouteOption } from '../types';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
-import { useApp } from '../store/AppContext';
+import { APP_CONFIG } from '../constants/config';
 
 interface NavigationScreenProps {
   destinationPlace?: Place | null;
@@ -33,38 +36,84 @@ export const NavigationScreen: React.FC<NavigationScreenProps> = ({
   const [instructions, setInstructions] = useState<TurnInstruction[]>([]);
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
   const [isMuted, setIsMuted] = useState<boolean>(!settings.voiceGuidance);
-  const [isSimulating, setIsSimulating] = useState<boolean>(false);
-  const [currentSpeed, setCurrentSpeed] = useState<number>(45);
+  const [isSimulating, setIsSimulating] = useState<boolean>(true);
+  const [progressPercent, setProgressPercent] = useState<number>(5);
+  const [currentHeading, setCurrentHeading] = useState<number>(45);
+  const [currentSpeed, setCurrentSpeed] = useState<number>(42);
+  const [routePlaces, setRoutePlaces] = useState<Place[]>([]);
   const [detourTaken, setDetourTaken] = useState<boolean>(false);
   const [showDetourOffer, setShowDetourOffer] = useState<boolean>(true);
 
+  const destName = destinationPlace?.name || 'Gachibowli Tech Campus';
+
   useEffect(() => {
     directionsService.getTurnByTurnInstructions().then(setInstructions);
-  }, []);
+    recommendationService
+      .getRouteRecommendations({
+        destinationPlace,
+        activeRoute,
+        headingAngle: 45,
+        speedKmh: 42,
+        filterOption: 'ALL',
+      })
+      .then(setRoutePlaces);
+  }, [destinationPlace, activeRoute]);
 
-  // Automatic trip simulation loop when isSimulating is active
+  // Smooth developmental simulation movement loop
   useEffect(() => {
-    if (!isSimulating || instructions.length === 0) return;
+    if (!isSimulating) return;
 
     const interval = setInterval(() => {
-      setCurrentStepIndex((prev) => {
-        if (prev < instructions.length - 1) {
-          const next = prev + 1;
-          const speeds = [42, 58, 48, 22];
-          setCurrentSpeed(speeds[next % speeds.length]);
-          return next;
-        } else {
+      setProgressPercent((prev) => {
+        const next = prev + 1.5;
+        if (next >= 100) {
           setIsSimulating(false);
-          Alert.alert('Destination Reached!', `You have arrived safely at ${destName}.`, [
-            { text: 'Complete Journey', onPress: onEndNavigation },
-          ]);
-          return prev;
+          Alert.alert(
+            'Destination Reached! 🎉',
+            `You have arrived safely at ${destName}.`,
+            [{ text: 'Complete Journey', onPress: onEndNavigation }]
+          );
+          return 100;
         }
+
+        // Dynamically update instruction step based on progress
+        const stepCount = instructions.length > 0 ? instructions.length : 4;
+        const stepIdx = Math.min(stepCount - 1, Math.floor((next / 100) * stepCount));
+        setCurrentStepIndex(stepIdx);
+
+        // Realistic heading angles along route corridor
+        let heading = 45;
+        if (next < 25) heading = 45;
+        else if (next < 55) heading = 65;
+        else if (next < 80) heading = 38;
+        else heading = 25;
+        setCurrentHeading(heading);
+
+        // Dynamic speed variations
+        const speeds = [38, 45, 52, 48, 56, 42];
+        const spd = speeds[Math.floor(next / 18) % speeds.length];
+        setCurrentSpeed(spd);
+
+        // Update locationService coordinates for real-time consistency
+        const originLat = APP_CONFIG.defaultLocation.latitude;
+        const originLng = APP_CONFIG.defaultLocation.longitude;
+        const destLat = destinationPlace?.coordinates.latitude ?? 17.4435;
+        const destLng = destinationPlace?.coordinates.longitude ?? 78.3772;
+        const frac = next / 100;
+
+        locationService.updateSimulatedLocation({
+          latitude: originLat + (destLat - originLat) * frac,
+          longitude: originLng + (destLng - originLng) * frac,
+          heading: heading,
+          speedKmh: spd,
+        });
+
+        return next;
       });
-    }, 3500);
+    }, 600);
 
     return () => clearInterval(interval);
-  }, [isSimulating, instructions]);
+  }, [isSimulating, instructions, activeRoute, destinationPlace, destName, onEndNavigation]);
 
   const currentInstruction = instructions[currentStepIndex] || {
     instruction: 'Continue straight',
@@ -73,12 +122,18 @@ export const NavigationScreen: React.FC<NavigationScreenProps> = ({
     streetName: 'Cyber Towers Flyover',
   };
 
-  const destName = destinationPlace?.name || 'Gachibowli Tech Campus';
+  const totalMeters = (activeRoute?.distanceKm ?? 2.1) * 1000;
+  const remainingMeters = Math.max(0, Math.round(totalMeters * (1 - progressPercent / 100)));
+  const remainingDist =
+    remainingMeters >= 1000
+      ? `${(remainingMeters / 1000).toFixed(1)} km`
+      : `${remainingMeters} m`;
 
-  const distances = ['2.1 km', '1.6 km', '900 m', '200 m'];
-  const times = detourTaken ? ['5 min', '3 min', '2 min', '1 min'] : ['8 min', '6 min', '3 min', '1 min'];
-  const remainingDist = distances[currentStepIndex] || (activeRoute ? `${activeRoute.distanceKm} km` : '2.1 km');
-  const remainingTime = times[currentStepIndex] || (activeRoute ? `${activeRoute.estimatedMinutes} min` : '8 min');
+  const totalMin = detourTaken
+    ? Math.max(2, (activeRoute?.estimatedMinutes ?? 8) - 3)
+    : activeRoute?.estimatedMinutes ?? 8;
+  const remainingMinutes = Math.max(1, Math.round(totalMin * (1 - progressPercent / 100)));
+  const remainingTime = `${remainingMinutes} min`;
 
   const handleToggleMute = async () => {
     const nextState = !isMuted;
@@ -247,18 +302,21 @@ export const NavigationScreen: React.FC<NavigationScreenProps> = ({
       <View style={styles.mapArea}>
         <InteractiveMap
           height={400}
-          places={destinationPlace ? [destinationPlace] : []}
+          places={routePlaces.length > 0 ? routePlaces : (destinationPlace ? [destinationPlace] : [])}
           selectedPlace={destinationPlace}
           destinationName={destName}
           isNavigationMode={true}
           onRecenter={handleRecenter}
+          userProgress={progressPercent / 100}
+          userHeading={currentHeading}
+          showSimulationBadge={true}
         />
 
         {/* Floating Ahead Speed & Trajectory HUD with Simulation & Speed Cycler */}
         <View style={styles.hudOverlay}>
           <View style={styles.hudPill}>
             <View style={styles.hudDot} />
-            <Text style={styles.hudText}>VECTOR 45° NE</Text>
+            <Text style={styles.hudText}>{`VECTOR ${currentHeading}° • ${progressPercent.toFixed(0)}%`}</Text>
           </View>
 
           {/* Interactive Auto-Drive Simulation Toggle */}
