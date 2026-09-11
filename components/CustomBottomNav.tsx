@@ -27,12 +27,6 @@ const TABS: TabItem[] = [
     inactiveIcon: 'home-outline',
   },
   {
-    id: 'map',
-    label: 'Map',
-    activeIcon: 'map',
-    inactiveIcon: 'map-outline',
-  },
-  {
     id: 'favorites',
     label: 'Favorites',
     activeIcon: 'heart',
