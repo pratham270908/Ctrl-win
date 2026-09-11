@@ -17,6 +17,12 @@
           "locationAlwaysAndWhenInUsePermission": "Allow Smart Directional Location Finder to use your location for navigation and nearby place recommendations.",
           "locationWhenInUsePermission": "Allow Smart Directional Location Finder to use your location for navigation and nearby place recommendations."
         }
+      ],
+      [
+        "react-native-maps",
+        {
+          "androidGoogleMapsApiKey": "AIzaSyDPsFxq8EsMMKXauVKGly3ToqjYXX1_wCc"
+        }
       ]
     ],
     "ios": {

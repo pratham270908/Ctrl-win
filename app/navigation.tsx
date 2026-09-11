@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -37,6 +37,7 @@ export const NavigationScreen: React.FC<NavigationScreenProps> = ({
   const [isMuted, setIsMuted] = useState<boolean>(!settings.voiceGuidance);
   const [isSimulating, setIsSimulating] = useState<boolean>(true);
   const [progressPercent, setProgressPercent] = useState<number>(5);
+  const progressRef = useRef<number>(5);
   const [currentHeading, setCurrentHeading] = useState<number>(45);
   const [currentSpeed, setCurrentSpeed] = useState<number>(42);
   const [routePlaces, setRoutePlaces] = useState<Place[]>([]);
@@ -68,56 +69,59 @@ export const NavigationScreen: React.FC<NavigationScreenProps> = ({
     if (!isSimulating) return;
 
     const interval = setInterval(() => {
-      setProgressPercent((prev) => {
-        const next = prev + 1.5;
-        if (next >= 100) {
-          setIsSimulating(false);
-          Alert.alert(
-            'Destination Reached! 🎉',
-            `You have arrived safely at ${destName}.`,
-            [{ text: 'Complete Journey', onPress: onEndNavigation }]
-          );
-          return 100;
-        }
+      const prev = progressRef.current;
+      const next = prev + 1.5;
 
-        // Dynamically update instruction step based on progress
-        const stepCount = instructions.length > 0 ? instructions.length : 4;
-        const stepIdx = Math.min(stepCount - 1, Math.floor((next / 100) * stepCount));
-        setCurrentStepIndex(stepIdx);
+      if (next >= 100) {
+        progressRef.current = 100;
+        setProgressPercent(100);
+        setIsSimulating(false);
+        Alert.alert(
+          'Destination Reached! 🎉',
+          `You have arrived safely at ${destName}.`,
+          [{ text: 'Complete Journey', onPress: onEndNavigation }]
+        );
+        return;
+      }
 
-        // Realistic heading angles along route corridor
-        let heading = 45;
-        if (next < 25) heading = 45;
-        else if (next < 55) heading = 65;
-        else if (next < 80) heading = 38;
-        else heading = 25;
-        setCurrentHeading(heading);
+      progressRef.current = next;
+      setProgressPercent(next);
 
-        // Dynamic speed variations
-        const speeds = [38, 45, 52, 48, 56, 42];
-        const spd = speeds[Math.floor(next / 18) % speeds.length];
-        setCurrentSpeed(spd);
+      // Dynamically update instruction step based on progress
+      const stepCount = instructions.length > 0 ? instructions.length : 4;
+      const stepIdx = Math.min(stepCount - 1, Math.floor((next / 100) * stepCount));
+      setCurrentStepIndex(stepIdx);
 
-        // Update locationService coordinates for real-time consistency
-        const originLat = simulationOrigin.latitude;
-        const originLng = simulationOrigin.longitude;
-        const destLat = destinationPlace?.coordinates.latitude ?? 17.4435;
-        const destLng = destinationPlace?.coordinates.longitude ?? 78.3772;
-        const frac = next / 100;
+      // Realistic heading angles along route corridor
+      let heading = 45;
+      if (next < 25) heading = 45;
+      else if (next < 55) heading = 65;
+      else if (next < 80) heading = 38;
+      else heading = 25;
+      setCurrentHeading(heading);
 
-        locationService.updateSimulatedLocation({
-          latitude: originLat + (destLat - originLat) * frac,
-          longitude: originLng + (destLng - originLng) * frac,
-          heading: heading,
-          speedKmh: spd,
-        });
+      // Dynamic speed variations
+      const speeds = [38, 45, 52, 48, 56, 42];
+      const spd = speeds[Math.floor(next / 18) % speeds.length];
+      setCurrentSpeed(spd);
 
-        return next;
+      // Update locationService coordinates for real-time consistency
+      const originLat = simulationOrigin.latitude;
+      const originLng = simulationOrigin.longitude;
+      const destLat = destinationPlace?.coordinates.latitude ?? 17.4435;
+      const destLng = destinationPlace?.coordinates.longitude ?? 78.3772;
+      const frac = next / 100;
+
+      locationService.updateSimulatedLocation({
+        latitude: originLat + (destLat - originLat) * frac,
+        longitude: originLng + (destLng - originLng) * frac,
+        heading: heading,
+        speedKmh: spd,
       });
     }, 600);
 
     return () => clearInterval(interval);
-  }, [isSimulating, instructions, activeRoute, destinationPlace, destName, onEndNavigation]);
+  }, [isSimulating, instructions, activeRoute, destinationPlace, destName, onEndNavigation, simulationOrigin]);
 
   const currentInstruction = instructions[currentStepIndex] || {
     instruction: 'Continue straight',

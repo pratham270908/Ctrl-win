@@ -61,10 +61,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const [userCoords, setUserCoords] = useState<Coordinates>(locationService.getCoordinates());
 
   useEffect(() => {
+    let isMounted = true;
     let watcherCleanup: (() => void) | null = null;
 
     // Subscribe to location updates
     const unsubscribe = locationService.subscribe((loc) => {
+      if (!isMounted) return;
       setLocationSubtitle(loc.label);
       setUserCoords({ latitude: loc.latitude, longitude: loc.longitude });
       setHeadingText(`Travelling ${loc.headingText}`);
@@ -73,10 +75,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
     // Start active device GPS tracking
     locationService.startWatchingLocation().then((cleanup) => {
-      watcherCleanup = cleanup;
+      if (isMounted) {
+        watcherCleanup = cleanup;
+      } else if (cleanup) {
+        cleanup();
+      }
     });
 
     return () => {
+      isMounted = false;
       unsubscribe();
       if (watcherCleanup) watcherCleanup();
     };

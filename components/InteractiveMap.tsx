@@ -7,7 +7,7 @@ import {
   Alert,
   Platform,
 } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE, Region } from 'react-native-maps';
+import MapView, { Marker, Polyline, Region, UrlTile } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { Place, Coordinates, UserLocation } from '../types';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
@@ -132,12 +132,15 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
   // Subscribe to live GPS updates from locationService
   useEffect(() => {
+    let isMounted = true;
+
     if (userLocation) {
       setCurrentCoords(userLocation);
       return;
     }
 
     const unsubscribe = locationService.subscribe((loc: UserLocation) => {
+      if (!isMounted) return;
       setCurrentCoords({
         latitude: loc.latitude,
         longitude: loc.longitude,
@@ -145,6 +148,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     });
 
     return () => {
+      isMounted = false;
       unsubscribe();
     };
   }, [userLocation]);
@@ -275,24 +279,28 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
   return (
     <View style={[styles.mapContainer, { height }]}>
-      {/* Real Geographic MapView */}
+      {/* Real Geographic MapView powered by OpenStreetMap */}
       <MapView
         ref={mapRef}
         style={styles.mapCanvas}
-        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-        customMapStyle={isSatellite ? undefined : DARK_MAP_STYLE}
-        mapType={isSatellite ? 'hybrid' : 'standard'}
-        showsTraffic={isTraffic}
+        mapType={Platform.OS === 'android' ? 'none' : 'standard'}
         initialRegion={currentRegion}
         showsUserLocation={false}
         showsCompass={false}
         showsScale={false}
         showsPointsOfInterests={true}
         showsBuildings={true}
-        loadingEnabled={true}
-        loadingBackgroundColor="#0F172A"
-        loadingIndicatorColor={COLORS.accentCyan}
       >
+        {/* Real OpenStreetMap Geographic Road & Highway Tiles */}
+        <UrlTile
+          urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          zIndex={1}
+          maximumZ={19}
+          minimumZ={1}
+          flipY={false}
+          shouldReplaceMapContent={Platform.OS === 'ios'}
+        />
+
         {/* Real Road Route Polyline */}
         {activePolyline.length > 1 && (
           <Polyline
@@ -301,7 +309,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
             strokeWidth={4.5}
             lineCap="round"
             lineJoin="round"
-            zIndex={2}
+            zIndex={10}
           />
         )}
 
@@ -313,7 +321,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
           }}
           anchor={{ x: 0.5, y: 0.5 }}
           flat={true}
-          zIndex={10}
+          zIndex={20}
         >
           <View style={styles.userMarkerContainer}>
             <View
@@ -346,7 +354,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
             longitude: destCoords.longitude,
           }}
           anchor={{ x: 0.5, y: 1.0 }}
-          zIndex={9}
+          zIndex={18}
         >
           <View style={styles.destinationMarker}>
             <View style={styles.destPin}>
@@ -372,7 +380,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
               }}
               anchor={{ x: 0.5, y: 0.5 }}
               onPress={() => handleMarkerTap(place)}
-              zIndex={isSelected ? 8 : 5}
+              zIndex={isSelected ? 16 : 14}
             >
               <View
                 style={[
@@ -552,6 +560,11 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
           </View>
         </View>
       )}
+
+      {/* OpenStreetMap Required Attribution */}
+      <View style={styles.osmAttribution} pointerEvents="none">
+        <Text style={styles.osmAttributionText}>© OpenStreetMap contributors</Text>
+      </View>
     </View>
   );
 };
@@ -844,4 +857,22 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
   },
+  osmAttribution: {
+    position: 'absolute',
+    bottom: 6,
+    right: 8,
+    backgroundColor: 'rgba(15, 23, 42, 0.82)',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: RADIUS.sm,
+    borderWidth: 0.5,
+    borderColor: 'rgba(51, 65, 85, 0.6)',
+    zIndex: 5,
+  },
+  osmAttributionText: {
+    color: '#94A3B8',
+    fontSize: 9,
+    fontWeight: '600',
+  },
 });
+

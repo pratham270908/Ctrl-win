@@ -1,6 +1,7 @@
 import * as Location from 'expo-location';
 import { UserLocation, Coordinates } from '../types';
 import { APP_CONFIG } from '../constants/config';
+import { API_CONFIG } from '../constants/apiConfig';
 
 export function getHeadingTextFromDegrees(degrees: number): string {
   const normalized = ((degrees % 360) + 360) % 360;
@@ -41,12 +42,6 @@ class LocationService implements ILocationService {
    */
   subscribe(callback: (loc: UserLocation) => void): () => void {
     this.listeners.add(callback);
-    // Defer initial notification to avoid triggering setState during render
-    queueMicrotask(() => {
-      if (this.listeners.has(callback)) {
-        callback({ ...this.currentLocation });
-      }
-    });
     return () => {
       this.listeners.delete(callback);
     };
@@ -79,6 +74,37 @@ class LocationService implements ILocationService {
       first.city,
     ].filter(Boolean);
     return parts.length > 0 ? parts.join(', ') : null;
+  }
+
+  /**
+   * Reverse geocodes coordinates, trying native device geocoding first, then Google Geocoding API
+   */
+  private async reverseGeocode(latitude: number, longitude: number): Promise<string | null> {
+    try {
+      const rev = await Location.reverseGeocodeAsync({ latitude, longitude });
+      const formatted = this.formatGeocodeLabel(rev);
+      if (formatted) return formatted;
+    } catch {
+      // Fall through to Google Geocoding API
+    }
+
+    if (API_CONFIG.hasGeocodingApi()) {
+      try {
+        const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${API_CONFIG.geocodingApiKey}`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.results && data.results.length > 0) {
+            const addr = data.results[0].formatted_address;
+            return addr ? addr.split(',').slice(0, 2).join(', ').trim() : null;
+          }
+        }
+      } catch {
+        // Keep fallback
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -122,17 +148,9 @@ class LocationService implements ILocationService {
               : this.currentLocation.speedKmh;
 
           let label = this.currentLocation.label;
-          try {
-            const rev = await Location.reverseGeocodeAsync({
-              latitude: loc.coords.latitude,
-              longitude: loc.coords.longitude,
-            });
-            const formatted = this.formatGeocodeLabel(rev);
-            if (formatted) {
-              label = formatted;
-            }
-          } catch {
-            // Keep existing label
+          const revLabel = await this.reverseGeocode(loc.coords.latitude, loc.coords.longitude);
+          if (revLabel) {
+            label = revLabel;
           }
 
           this.currentLocation = {
@@ -188,19 +206,11 @@ class LocationService implements ILocationService {
             ? Math.round(loc.coords.speed * 3.6)
             : this.currentLocation.speedKmh;
 
-        // Try to reverse geocode locality using native geocoder
+        // Try to reverse geocode locality using native + Google geocoder
         let label = this.currentLocation.label;
-        try {
-          const rev = await Location.reverseGeocodeAsync({
-            latitude: loc.coords.latitude,
-            longitude: loc.coords.longitude,
-          });
-          const formatted = this.formatGeocodeLabel(rev);
-          if (formatted) {
-            label = formatted;
-          }
-        } catch {
-          // Keep existing label
+        const revLabel = await this.reverseGeocode(loc.coords.latitude, loc.coords.longitude);
+        if (revLabel) {
+          label = revLabel;
         }
 
         this.currentLocation = {

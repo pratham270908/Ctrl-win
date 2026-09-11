@@ -13,6 +13,10 @@ export const API_CONFIG = {
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
     '',
   mapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '',
+  geocodingApiKey:
+    process.env.EXPO_PUBLIC_GOOGLE_GEOCODING_API_KEY ||
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
+    '',
 
   hasPlacesApi(): boolean {
     return Boolean(this.placesApiKey && this.placesApiKey.trim().length > 0);
@@ -20,5 +24,9 @@ export const API_CONFIG = {
 
   hasDirectionsApi(): boolean {
     return Boolean(this.directionsApiKey && this.directionsApiKey.trim().length > 0);
+  },
+
+  hasGeocodingApi(): boolean {
+    return Boolean(this.geocodingApiKey && this.geocodingApiKey.trim().length > 0);
   },
 };
