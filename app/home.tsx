@@ -19,7 +19,7 @@ import { CATEGORIES, CategoryInfo } from '../data/mockCategories';
 import { placesService } from '../services/placesService';
 import { locationService } from '../services/locationService';
 import { useApp } from '../store/AppContext';
-import { Place, PlaceCategory } from '../types';
+import { Place, PlaceCategory, Coordinates } from '../types';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
 import { APP_CONFIG } from '../constants/config';
 
@@ -57,30 +57,45 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const [speedKmh, setSpeedKmh] = useState<number>(38);
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'AHEAD_ONLY' | 'OPEN_NOW' | 'TOP_RATED' | 'UNDER_1KM'>('ALL');
   const [vectorFeedback, setVectorFeedback] = useState<string | null>(null);
+  const [locationSubtitle, setLocationSubtitle] = useState<string>(APP_CONFIG.defaultLocation.label);
+  const [userCoords, setUserCoords] = useState<Coordinates>(locationService.getCoordinates());
 
   useEffect(() => {
-    loadLocationData();
+    let watcherCleanup: (() => void) | null = null;
+
+    // Subscribe to location updates
+    const unsubscribe = locationService.subscribe((loc) => {
+      setLocationSubtitle(loc.label);
+      setUserCoords({ latitude: loc.latitude, longitude: loc.longitude });
+      setHeadingText(`Travelling ${loc.headingText}`);
+      setSpeedKmh(loc.speedKmh);
+    });
+
+    // Start active device GPS tracking
+    locationService.startWatchingLocation().then((cleanup) => {
+      watcherCleanup = cleanup;
+    });
+
+    return () => {
+      unsubscribe();
+      if (watcherCleanup) watcherCleanup();
+    };
   }, []);
 
   useEffect(() => {
     if (activeRoute) {
-      loadRouteRecommendations(activeRoute, activeFilter, headingAngle, speedKmh);
+      loadRouteRecommendations(activeRoute, activeFilter, headingAngle, speedKmh, userCoords);
     } else {
       setRouteRecommendations([]);
     }
-  }, [activeRoute, activeDestinationPlace, activeFilter, headingAngle, speedKmh]);
-
-  const loadLocationData = async () => {
-    const loc = await locationService.getCurrentLocation();
-    setHeadingText(`Travelling ${loc.headingText}`);
-    setSpeedKmh(loc.speedKmh);
-  };
+  }, [activeRoute, activeDestinationPlace, activeFilter, headingAngle, speedKmh, userCoords]);
 
   const loadRouteRecommendations = async (
     route = activeRoute,
     filter = activeFilter,
     angle = headingAngle,
-    speed = speedKmh
+    speed = speedKmh,
+    coords = userCoords
   ) => {
     if (!route) {
       setRouteRecommendations([]);
@@ -91,7 +106,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       route,
       angle,
       speed,
-      filter
+      filter,
+      coords
     );
     setRouteRecommendations(places);
   };
@@ -161,6 +177,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <Header
+        subtitle={locationSubtitle}
         onProfilePress={onProfilePress}
         onNotificationPress={handleNotificationPress}
       />
@@ -291,6 +308,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               selectedPlace={activeRoute && routeRecommendations.length > 0 ? routeRecommendations[0] : null}
               onSelectPlace={onPlacePress}
               destinationName={activeRoute ? currentDestinationName : APP_CONFIG.defaultDestination.name}
+              destinationCoordinates={activeDestinationPlace?.coordinates}
+              userLocation={userCoords}
+              userHeading={headingAngle}
             />
           </View>
         </View>
@@ -298,7 +318,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         {/* Quick Utility Shortcuts */}
         <View style={styles.shortcutsRow}>
           <TouchableOpacity
-            style={[styles.shortcutItem, { backgroundColor: '#FEE2E2', borderColor: '#FECACA' }]}
+            style={[styles.shortcutItem, { backgroundColor: COLORS.dangerLight, borderColor: 'rgba(239,68,68,0.3)' }]}
             onPress={onEmergencyPress}
             activeOpacity={0.8}
           >
@@ -306,11 +326,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               <Ionicons name="alert" size={18} color="#FFFFFF" />
             </View>
             <Text style={[styles.shortcutTitle, { color: COLORS.danger }]}>Emergency</Text>
-            <Text style={styles.shortcutSub}>Hospitals & Police</Text>
+            <Text style={styles.shortcutSub}>Hospitals &amp; Police</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.shortcutItem, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }]}
+            style={[styles.shortcutItem, { backgroundColor: COLORS.accentLight, borderColor: COLORS.border }]}
             onPress={onTransportPress}
             activeOpacity={0.8}
           >
@@ -318,11 +338,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               <Ionicons name="bus" size={18} color="#FFFFFF" />
             </View>
             <Text style={[styles.shortcutTitle, { color: COLORS.info }]}>Transit</Text>
-            <Text style={styles.shortcutSub}>Metro & Bus 216</Text>
+            <Text style={styles.shortcutSub}>Metro &amp; Bus 216</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.shortcutItem, { backgroundColor: '#F5F3FF', borderColor: '#DDD6FE' }]}
+            style={[styles.shortcutItem, { backgroundColor: COLORS.accentLight, borderColor: COLORS.border }]}
             onPress={onAccessibilityPress}
             activeOpacity={0.8}
           >
@@ -334,7 +354,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.shortcutItem, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }]}
+            style={[styles.shortcutItem, { backgroundColor: COLORS.aheadLight, borderColor: 'rgba(34,197,94,0.3)' }]}
             onPress={onOfflineMapsPress}
             activeOpacity={0.8}
           >
@@ -466,6 +486,7 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
+    backgroundColor: COLORS.background,
   },
   scrollContent: {
     paddingBottom: SPACING.xl,
@@ -498,13 +519,13 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.xs,
   },
   mapSectionCard: {
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: COLORS.surface,
     marginHorizontal: SPACING.lg,
     marginVertical: SPACING.sm,
     borderRadius: RADIUS.xl,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: COLORS.border,
     ...SHADOWS.md,
   },
   mapHeaderRow: {
@@ -557,7 +578,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.lg,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: COLORS.border,
   },
   shortcutsRow: {
     flexDirection: 'row',
@@ -594,14 +615,14 @@ const styles = StyleSheet.create({
   feedbackBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#EFF6FF',
+    backgroundColor: COLORS.accentLight,
     paddingHorizontal: SPACING.md,
     paddingVertical: 8,
     borderRadius: RADIUS.md,
     marginHorizontal: SPACING.lg,
     marginBottom: SPACING.sm,
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: COLORS.borderBright,
     gap: 8,
   },
   feedbackBannerText: {
@@ -622,14 +643,14 @@ const styles = StyleSheet.create({
     height: 34,
     paddingHorizontal: 12,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: COLORS.surfaceHigh,
     borderWidth: 1.5,
-    borderColor: COLORS.cardBorder,
+    borderColor: COLORS.border,
     ...SHADOWS.sm,
   },
   filterPillActive: {
-    backgroundColor: COLORS.primaryDark,
-    borderColor: COLORS.primaryDark,
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
   },
   filterPillText: {
     fontSize: 12,
@@ -645,12 +666,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: SPACING.xl,
     paddingHorizontal: SPACING.lg,
-    backgroundColor: COLORS.surfaceLight,
+    backgroundColor: COLORS.surfaceHigh,
     borderRadius: RADIUS.lg,
     marginHorizontal: SPACING.lg,
     marginVertical: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: COLORS.border,
   },
   emptyFilteredTitle: {
     fontSize: 13,
@@ -673,14 +694,14 @@ const styles = StyleSheet.create({
   },
   /* Active Journey Banner */
   activeJourneyCard: {
-    backgroundColor: '#0F172A',
+    backgroundColor: COLORS.surfaceHigh,
     marginHorizontal: SPACING.lg,
     marginTop: SPACING.xs,
     marginBottom: SPACING.sm,
     borderRadius: RADIUS.xl,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: COLORS.borderBright,
     ...SHADOWS.md,
   },
   activeJourneyHeaderRow: {
@@ -776,14 +797,14 @@ const styles = StyleSheet.create({
   },
   /* No Route Guidance Card */
   noRoutePromptCard: {
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: COLORS.surface,
     marginHorizontal: SPACING.lg,
     marginTop: SPACING.md,
     marginBottom: SPACING.sm,
     borderRadius: RADIUS.xl,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: COLORS.border,
     alignItems: 'center',
     ...SHADOWS.sm,
   },

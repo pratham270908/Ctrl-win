@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -68,7 +68,7 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({ onBack, onSelectSe
     setDescription('');
 
     Alert.alert(
-      'Report Submitted! 🙏',
+      'Report Submitted! ðŸ™',
       'Thank you for improving directional journey accuracy for fellow travelers. Your report is now logged locally.'
     );
   };
@@ -100,7 +100,7 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({ onBack, onSelectSe
       case 'Resolved':
         return { color: COLORS.ahead, bgColor: COLORS.aheadLight };
       case 'In Review':
-        return { color: '#F59E0B', bgColor: '#FEF3C7' };
+        return { color: '#F59E0B', bgColor: COLORS.warningLight };
       case 'Received':
       default:
         return { color: COLORS.onRoute, bgColor: COLORS.onRouteLight };
@@ -205,7 +205,7 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({ onBack, onSelectSe
                 <View key={route.id} style={styles.routeCard}>
                   <View style={styles.routeHeaderRow}>
                     <View style={styles.routeIconWrapper}>
-                      <Ionicons name="navigate" size={18} color={COLORS.primaryDark} />
+                      <Ionicons name="navigate" size={18} color={COLORS.accent} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.routeDestination}>{route.destinationName}</Text>
@@ -403,9 +403,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: COLORS.surface,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.cardBorder,
+    borderBottomColor: COLORS.border,
   },
   backBtn: {
     padding: SPACING.xs,
@@ -427,13 +427,13 @@ const styles = StyleSheet.create({
   },
   segmentContainer: {
     flexDirection: 'row',
-    backgroundColor: COLORS.surfaceLight,
+    backgroundColor: COLORS.surfaceHigh,
     marginHorizontal: SPACING.lg,
     marginTop: SPACING.md,
     borderRadius: RADIUS.xl,
     padding: 4,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: COLORS.border,
   },
   segmentBtn: {
     flex: 1,
@@ -445,7 +445,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   segmentBtnActive: {
-    backgroundColor: COLORS.primaryDark,
+    backgroundColor: COLORS.accent,
     ...SHADOWS.sm,
   },
   segmentText: {
@@ -479,21 +479,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: RADIUS.md,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: COLORS.dangerLight,
   },
   clearBtnText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#DC2626',
+    color: COLORS.danger,
   },
   emptyCard: {
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: COLORS.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: COLORS.border,
     borderStyle: 'dashed',
     marginTop: SPACING.sm,
   },
@@ -512,11 +512,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
   },
   routeCard: {
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: COLORS.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: COLORS.border,
     marginBottom: SPACING.sm,
     ...SHADOWS.sm,
   },
@@ -529,7 +529,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: RADIUS.lg,
-    backgroundColor: COLORS.surfaceLight,
+    backgroundColor: COLORS.surfaceHigh,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -544,7 +544,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   simBadge: {
-    backgroundColor: '#E0E7FF',
+    backgroundColor: COLORS.accentLight,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: RADIUS.full,
@@ -552,11 +552,11 @@ const styles = StyleSheet.create({
   simBadgeText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#4338CA',
+    color: COLORS.accent,
   },
   routeDivider: {
     height: 1,
-    backgroundColor: COLORS.cardBorder,
+    backgroundColor: COLORS.border,
     marginVertical: SPACING.sm,
   },
   routeFooterRow: {
@@ -575,10 +575,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   searchListContainer: {
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: COLORS.surface,
     borderRadius: RADIUS.xl,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: COLORS.border,
     overflow: 'hidden',
     ...SHADOWS.sm,
   },
@@ -589,7 +589,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.cardBorder,
+    borderBottomColor: COLORS.border,
   },
   searchItemLeft: {
     flexDirection: 'row',
@@ -602,11 +602,11 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
   },
   formCard: {
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: COLORS.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: COLORS.border,
     marginBottom: SPACING.xl,
     ...SHADOWS.md,
   },
@@ -637,13 +637,13 @@ const styles = StyleSheet.create({
   typePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.surfaceLight,
+    backgroundColor: COLORS.surfaceHigh,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: RADIUS.full,
     gap: 4,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: COLORS.border,
   },
   typePillSelected: {
     backgroundColor: COLORS.accent,
@@ -659,12 +659,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   textInput: {
-    backgroundColor: COLORS.surfaceLight,
+    backgroundColor: COLORS.surfaceHigh,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md,
     height: 44,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: COLORS.border,
     fontSize: 13,
     color: COLORS.textPrimary,
   },
@@ -677,7 +677,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.primaryDark,
+    backgroundColor: COLORS.accent,
     height: 48,
     borderRadius: RADIUS.xl,
     marginTop: SPACING.lg,
@@ -695,11 +695,11 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
   },
   reportItemCard: {
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: COLORS.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: COLORS.border,
     marginBottom: SPACING.sm,
     ...SHADOWS.sm,
   },
@@ -710,7 +710,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xs,
   },
   reportTypeBadge: {
-    backgroundColor: COLORS.surfaceLight,
+    backgroundColor: COLORS.surfaceHigh,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: RADIUS.full,
@@ -753,3 +753,4 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 });
+

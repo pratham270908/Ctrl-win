@@ -88,7 +88,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
         <View style={styles.headerTitleWrap}>
           <Text style={styles.headerSubtitle}>SEARCH RESULTS</Text>
           <Text style={styles.headerTitle} numberOfLines={1}>
-            “{query}”
+            "{query}"
           </Text>
         </View>
 
@@ -281,9 +281,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: COLORS.surface,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.cardBorder,
+    borderBottomColor: COLORS.border,
   },
   backBtn: {
     padding: SPACING.xs,
@@ -305,7 +305,7 @@ const styles = StyleSheet.create({
   },
   viewToggleWrap: {
     flexDirection: 'row',
-    backgroundColor: COLORS.surfaceLight,
+    backgroundColor: COLORS.surfaceHigh,
     borderRadius: RADIUS.md,
     padding: 3,
   },
@@ -323,9 +323,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: COLORS.surface,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.surfaceLight,
+    borderBottomColor: COLORS.surfaceHigh,
   },
   summaryBadge: {
     flexDirection: 'row',
@@ -421,7 +421,7 @@ const styles = StyleSheet.create({
   emptySectionBox: {
     marginHorizontal: SPACING.lg,
     padding: SPACING.md,
-    backgroundColor: COLORS.surfaceLight,
+    backgroundColor: COLORS.surfaceHigh,
     borderRadius: RADIUS.md,
     alignItems: 'center',
     marginVertical: 4,
@@ -436,7 +436,7 @@ const styles = StyleSheet.create({
   },
   mapListOverlay: {
     padding: SPACING.md,
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: COLORS.surface,
     borderTopLeftRadius: RADIUS.xl,
     borderTopRightRadius: RADIUS.xl,
     marginTop: -20,
@@ -450,3 +450,4 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
 });
+

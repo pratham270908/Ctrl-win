@@ -1,18 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { RouteCard } from '../components/RouteCard';
 import { InteractiveMap } from '../components/InteractiveMap';
 import { MOCK_ROUTE_OPTIONS } from '../data/mockRoutes';
-import { Place, RouteOption } from '../types';
+import { Place, RouteOption, Coordinates } from '../types';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
+import { directionsService } from '../services/directionsService';
+import { locationService } from '../services/locationService';
 
 interface RouteOptionsScreenProps {
   destinationPlace?: Place | null;
@@ -25,10 +28,52 @@ export const RouteOptionsScreen: React.FC<RouteOptionsScreenProps> = ({
   onBack,
   onStartNavigation,
 }) => {
+  const [routes, setRoutes] = useState<RouteOption[]>(MOCK_ROUTE_OPTIONS);
   const [selectedRoute, setSelectedRoute] = useState<RouteOption>(MOCK_ROUTE_OPTIONS[0]);
+  const [originLabel, setOriginLabel] = useState<string>('Current Location (GPS)');
+  const [originCoords, setOriginCoords] = useState<Coordinates>(locationService.getCoordinates());
+  const [routePolyline, setRoutePolyline] = useState<Coordinates[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const destName = destinationPlace?.name || 'Gachibowli Tech Campus';
   const destCategory = destinationPlace?.category || 'Destination';
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchRouteData = async () => {
+      setIsLoading(true);
+      const loc = await locationService.getCurrentLocation();
+      if (!isMounted) return;
+
+      const userCoords: Coordinates = {
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+      };
+      setOriginCoords(userCoords);
+      setOriginLabel(loc.label || 'Your Device Location');
+
+      const destCoordinates = destinationPlace?.coordinates;
+      const computedRoutes = await directionsService.getRouteOptions(
+        userCoords,
+        destCoordinates
+      );
+
+      if (!isMounted) return;
+      if (computedRoutes && computedRoutes.length > 0) {
+        setRoutes(computedRoutes);
+        setSelectedRoute(computedRoutes[0]);
+      }
+      setRoutePolyline(directionsService.getActiveRoutePolyline());
+      setIsLoading(false);
+    };
+
+    fetchRouteData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [destinationPlace]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
@@ -61,6 +106,9 @@ export const RouteOptionsScreen: React.FC<RouteOptionsScreenProps> = ({
             places={destinationPlace ? [destinationPlace] : []}
             selectedPlace={destinationPlace}
             destinationName={destName}
+            destinationCoordinates={destinationPlace?.coordinates}
+            routeCoordinates={routePolyline}
+            userLocation={originCoords}
           />
         </View>
 
@@ -72,7 +120,9 @@ export const RouteOptionsScreen: React.FC<RouteOptionsScreenProps> = ({
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.nodeLabel}>START</Text>
-              <Text style={styles.nodeVal}>Cyber Towers Junction (You)</Text>
+              <Text style={styles.nodeVal} numberOfLines={1}>
+                {originLabel}
+              </Text>
             </View>
           </View>
 
@@ -84,21 +134,30 @@ export const RouteOptionsScreen: React.FC<RouteOptionsScreenProps> = ({
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.nodeLabel}>DESTINATION ({destCategory.toUpperCase()})</Text>
-              <Text style={styles.nodeVal}>{destName}</Text>
+              <Text style={styles.nodeVal} numberOfLines={1}>
+                {destName}
+              </Text>
             </View>
           </View>
         </View>
 
         {/* Section Title */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Available Route Variants</Text>
-          <Text style={styles.sectionSubtitle}>
-            Tap a route to inspect flyovers and useful places en route
-          </Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.sectionTitle}>Available Route Variants</Text>
+            <Text style={styles.sectionSubtitle}>
+              {isLoading
+                ? 'Calculating real traffic & corridor distances...'
+                : 'Real road routes calculated via Routes API'}
+            </Text>
+          </View>
+          {isLoading && (
+            <ActivityIndicator size="small" color={COLORS.accentCyan} style={{ marginLeft: 8 }} />
+          )}
         </View>
 
         {/* Selectable Route Options */}
-        {MOCK_ROUTE_OPTIONS.map((route) => (
+        {routes.map((route) => (
           <RouteCard
             key={route.id}
             route={route}

@@ -15,7 +15,6 @@ import { recommendationService } from '../services/recommendationService';
 import { useApp } from '../store/AppContext';
 import { Place, RouteOption } from '../types';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
-import { APP_CONFIG } from '../constants/config';
 
 interface NavigationScreenProps {
   destinationPlace?: Place | null;
@@ -43,6 +42,11 @@ export const NavigationScreen: React.FC<NavigationScreenProps> = ({
   const [routePlaces, setRoutePlaces] = useState<Place[]>([]);
   const [detourTaken, setDetourTaken] = useState<boolean>(false);
   const [showDetourOffer, setShowDetourOffer] = useState<boolean>(true);
+  // Capture the real user origin at mount time for consistent simulation
+  const [simulationOrigin] = useState<{ latitude: number; longitude: number }>(() => {
+    const coords = locationService.getCoordinates();
+    return { latitude: coords.latitude, longitude: coords.longitude };
+  });
 
   const destName = destinationPlace?.name || 'Gachibowli Tech Campus';
 
@@ -95,8 +99,8 @@ export const NavigationScreen: React.FC<NavigationScreenProps> = ({
         setCurrentSpeed(spd);
 
         // Update locationService coordinates for real-time consistency
-        const originLat = APP_CONFIG.defaultLocation.latitude;
-        const originLng = APP_CONFIG.defaultLocation.longitude;
+        const originLat = simulationOrigin.latitude;
+        const originLng = simulationOrigin.longitude;
         const destLat = destinationPlace?.coordinates.latitude ?? 17.4435;
         const destLng = destinationPlace?.coordinates.longitude ?? 78.3772;
         const frac = next / 100;
@@ -305,6 +309,8 @@ export const NavigationScreen: React.FC<NavigationScreenProps> = ({
           places={routePlaces.length > 0 ? routePlaces : (destinationPlace ? [destinationPlace] : [])}
           selectedPlace={destinationPlace}
           destinationName={destName}
+          destinationCoordinates={destinationPlace?.coordinates}
+          routeCoordinates={directionsService.getActiveRoutePolyline()}
           isNavigationMode={true}
           onRecenter={handleRecenter}
           userProgress={progressPercent / 100}

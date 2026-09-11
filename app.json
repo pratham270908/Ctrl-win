@@ -10,18 +10,36 @@
       "resizeMode": "contain",
       "backgroundColor": "#0F172A"
     },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow Smart Directional Location Finder to use your location for navigation and nearby place recommendations.",
+          "locationWhenInUsePermission": "Allow Smart Directional Location Finder to use your location for navigation and nearby place recommendations."
+        }
+      ]
+    ],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.smartdirectional.finder"
+      "bundleIdentifier": "com.smartdirectional.finder",
+      "config": {
+        "googleMapsApiKey": "AIzaSyDPsFxq8EsMMKXauVKGly3ToqjYXX1_wCc"
+      }
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#0F172A"
       },
-      "package": "com.smartdirectional.finder"
+      "package": "com.smartdirectional.finder",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyDPsFxq8EsMMKXauVKGly3ToqjYXX1_wCc"
+        }
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
     }
   }
 }
+

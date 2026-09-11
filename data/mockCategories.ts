@@ -1,9 +1,9 @@
-import { PlaceCategory } from '../types';
+﻿import { PlaceCategory } from '../types';
 
 export interface CategoryInfo {
   id: PlaceCategory;
   name: string;
-  iconName: string; // Ionicons name
+  iconName: string;
   emoji: string;
   color: string;
   bgColor: string;
@@ -14,64 +14,64 @@ export const CATEGORIES: CategoryInfo[] = [
   {
     id: 'Coffee',
     name: 'Coffee',
-    iconName: 'cafe',
+    iconName: 'coffee',
     emoji: '☕',
-    color: '#B45309',
-    bgColor: '#FEF3C7',
-    description: 'Cafes, espresso bars & drive-thrus ahead',
+    color: '#F97316',
+    bgColor: 'rgba(249, 115, 22, 0.15)',
+    description: 'Cafes, espresso bars and drive-thrus ahead',
   },
   {
     id: 'Petrol',
     name: 'Petrol',
-    iconName: 'speedometer',
+    iconName: 'gas-station',
     emoji: '⛽',
-    color: '#0284C7',
-    bgColor: '#E0F2FE',
-    description: 'Fuel pumps, EV chargers & air stations',
+    color: '#06B6D4',
+    bgColor: 'rgba(6, 182, 212, 0.15)',
+    description: 'Fuel pumps, EV chargers and air stations',
   },
   {
     id: 'ATM',
     name: 'ATM',
-    iconName: 'cash',
+    iconName: 'atm',
     emoji: '🏧',
-    color: '#059669',
-    bgColor: '#D1FAE5',
-    description: 'Cash dispensers & bank kiosks',
+    color: '#22C55E',
+    bgColor: 'rgba(34, 197, 94, 0.15)',
+    description: 'Cash dispensers and bank kiosks',
   },
   {
     id: 'Pharmacy',
     name: 'Pharmacy',
-    iconName: 'medkit',
+    iconName: 'pill',
     emoji: '💊',
-    color: '#DC2626',
-    bgColor: '#FEE2E2',
-    description: '24/7 medical stores & chemist shops',
+    color: '#EF4444',
+    bgColor: 'rgba(239, 68, 68, 0.15)',
+    description: '24/7 medical stores and chemist shops',
   },
   {
     id: 'Restaurant',
-    name: 'Restaurant',
-    iconName: 'restaurant',
-    emoji: '🍔',
-    color: '#EA580C',
-    bgColor: '#FFEDD5',
-    description: 'Quick bites, fine dining & takeaway',
+    name: 'Food',
+    iconName: 'silverware-fork-knife',
+    emoji: '🍽',
+    color: '#F97316',
+    bgColor: 'rgba(249, 115, 22, 0.15)',
+    description: 'Quick bites, fine dining and takeaway',
   },
   {
     id: 'Hospital',
     name: 'Hospital',
-    iconName: 'fitness',
+    iconName: 'hospital-building',
     emoji: '🏥',
-    color: '#E11D48',
-    bgColor: '#FFE4E6',
-    description: 'Emergency trauma, clinics & care centers',
+    color: '#EF4444',
+    bgColor: 'rgba(239, 68, 68, 0.15)',
+    description: 'Emergency trauma, clinics and care centers',
   },
   {
     id: 'Shopping',
     name: 'Shopping',
     iconName: 'cart',
-    emoji: '🛍️',
-    color: '#7C3AED',
-    bgColor: '#EDE9FE',
-    description: 'Supermarkets, malls & convenience',
+    emoji: '🛍',
+    color: '#A78BFA',
+    bgColor: 'rgba(167, 139, 250, 0.15)',
+    description: 'Supermarkets, malls and convenience',
   },
 ];

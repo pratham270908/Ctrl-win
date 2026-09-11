@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Place } from '../types';
@@ -15,13 +15,24 @@ interface PlaceCardProps {
 
 const getCategoryIcon = (category: string): any => {
   const cat = category.toLowerCase();
-  if (cat.includes('coffee') || cat.includes('cafe')) return 'cafe-outline';
-  if (cat.includes('petrol') || cat.includes('fuel') || cat.includes('ev')) return 'car-outline';
-  if (cat.includes('atm') || cat.includes('bank')) return 'card-outline';
-  if (cat.includes('restaurant') || cat.includes('food')) return 'restaurant-outline';
-  if (cat.includes('hospital') || cat.includes('health')) return 'medkit-outline';
-  if (cat.includes('pharmacy')) return 'medical-outline';
-  return 'location-outline';
+  if (cat.includes('coffee') || cat.includes('cafe')) return 'cafe';
+  if (cat.includes('petrol') || cat.includes('fuel') || cat.includes('ev')) return 'flash';
+  if (cat.includes('atm') || cat.includes('bank')) return 'card';
+  if (cat.includes('restaurant') || cat.includes('food')) return 'restaurant';
+  if (cat.includes('hospital') || cat.includes('health')) return 'medkit';
+  if (cat.includes('pharmacy')) return 'medical';
+  return 'location';
+};
+
+const getCategoryColor = (category: string): string => {
+  const cat = category.toLowerCase();
+  if (cat.includes('coffee') || cat.includes('cafe')) return COLORS.orange;
+  if (cat.includes('petrol') || cat.includes('fuel') || cat.includes('ev')) return COLORS.accentCyan;
+  if (cat.includes('atm') || cat.includes('bank')) return COLORS.ahead;
+  if (cat.includes('restaurant') || cat.includes('food')) return COLORS.orange;
+  if (cat.includes('hospital') || cat.includes('health')) return COLORS.danger;
+  if (cat.includes('pharmacy')) return COLORS.warning;
+  return COLORS.accent;
 };
 
 export const PlaceCard: React.FC<PlaceCardProps> = ({
@@ -37,6 +48,7 @@ export const PlaceCard: React.FC<PlaceCardProps> = ({
   const favorite = isFavorite(place.id);
   const badgeInfo = getDirectionBadgeInfo(place.direction, place.routeDeviation);
   const categoryIcon = getCategoryIcon(place.category);
+  const categoryColor = getCategoryColor(place.category);
 
   const formatDistance = (meters?: number): string => {
     const m = meters ?? 0;
@@ -54,147 +66,125 @@ export const PlaceCard: React.FC<PlaceCardProps> = ({
       accessibilityRole="button"
       accessibilityLabel={`${place.name || 'Place'}, ${badgeInfo.label}`}
     >
-      {/* Header Row: Direction Badge & Favorite Heart */}
-      <View style={styles.headerRow}>
-        <View style={[styles.directionBadge, { backgroundColor: badgeInfo.bgColor }]}>
-          <Ionicons
-            name={badgeInfo.icon as any}
-            size={12}
-            color={badgeInfo.color}
-            style={styles.badgeIcon}
-          />
-          <Text style={[styles.directionBadgeText, { color: badgeInfo.color }]}>
-            {badgeInfo.label}
-          </Text>
-          {(place.routeDeviation ?? 0) > 0 && place.direction === 'ON_ROUTE' && (
-            <Text style={[styles.deviationText, { color: badgeInfo.color }]}>
-              • +{place.routeDeviation}m detour
+      {/* Left accent bar */}
+      <View style={[styles.accentBar, { backgroundColor: badgeInfo.color }]} />
+
+      <View style={styles.cardInner}>
+        {/* Header Row */}
+        <View style={styles.headerRow}>
+          <View style={[styles.categoryIconWrap, { backgroundColor: categoryColor + '22' }]}>
+            <Ionicons name={categoryIcon as any} size={16} color={categoryColor} />
+          </View>
+
+          <View style={styles.titleCol}>
+            <Text style={styles.placeName} numberOfLines={1}>
+              {place.name}
             </Text>
-          )}
+            <Text style={styles.addressText} numberOfLines={1}>
+              {place.address}
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={styles.favButton}
+            onPress={() => toggleFavorite(place)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityLabel={favorite ? 'Remove from saved' : 'Save place'}
+          >
+            <Ionicons
+              name={favorite ? 'heart' : 'heart-outline'}
+              size={19}
+              color={favorite ? COLORS.danger : COLORS.textMuted}
+            />
+          </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          style={styles.favButton}
-          onPress={() => toggleFavorite(place)}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          accessibilityLabel={favorite ? 'Remove from saved' : 'Save place'}
-        >
-          <Ionicons
-            name={favorite ? 'heart' : 'heart-outline'}
-            size={20}
-            color={favorite ? COLORS.danger : COLORS.textMuted}
-          />
-        </TouchableOpacity>
-      </View>
+        {/* Metrics Row */}
+        <View style={styles.metricsRow}>
+          <View style={[styles.directionBadge, { backgroundColor: badgeInfo.bgColor }]}>
+            <Ionicons
+              name={badgeInfo.icon as any}
+              size={11}
+              color={badgeInfo.color}
+            />
+            <Text style={[styles.directionBadgeText, { color: badgeInfo.color }]}>
+              {badgeInfo.label}
+            </Text>
+          </View>
 
-      {/* Place Title & Category */}
-      <View style={styles.titleSection}>
-        <Text style={styles.placeName} numberOfLines={1}>
-          {place.name}
-        </Text>
-        <View style={styles.categoryRow}>
-          <Ionicons name={categoryIcon} size={12} color={COLORS.textSecondary} />
-          <Text style={styles.categoryText}>{place.category}</Text>
-          <View style={styles.inlineDot} />
-          <Text style={styles.addressText} numberOfLines={1}>
-            {place.address}
-          </Text>
-        </View>
-      </View>
+          <View style={styles.metricItem}>
+            <Ionicons name="star" size={11} color="#F59E0B" />
+            <Text style={styles.ratingText}>{(place.rating ?? 0).toFixed(1)}</Text>
+          </View>
 
-      {/* Metrics Row: Rating, Distance, Travel Time, Status */}
-      <View style={styles.metricsRow}>
-        <View style={styles.ratingBadge}>
-          <Ionicons name="star" size={13} color="#F59E0B" />
-          <Text style={styles.ratingText}>{(place.rating ?? 0).toFixed(1)}</Text>
-          <Text style={styles.reviewCount}>({place.reviewCount ?? 0})</Text>
-        </View>
+          <View style={styles.metricDivider} />
 
-        <View style={styles.metricSeparator} />
+          <View style={styles.metricItem}>
+            <Ionicons name="navigate-outline" size={11} color={COLORS.textSecondary} />
+            <Text style={styles.metricText}>{formatDistance(place.distance)}</Text>
+          </View>
 
-        <View style={styles.metricItem}>
-          <Ionicons name="navigate-outline" size={13} color={COLORS.textSecondary} />
-          <Text style={styles.metricText}>{formatDistance(place.distance)}</Text>
-        </View>
+          <View style={styles.metricDivider} />
 
-        <View style={styles.metricSeparator} />
+          <View style={styles.metricItem}>
+            <Ionicons name="time-outline" size={11} color={COLORS.textSecondary} />
+            <Text style={styles.metricText}>{place.travelTime} min</Text>
+          </View>
 
-        <View style={styles.metricItem}>
-          <Ionicons name="time-outline" size={13} color={COLORS.textSecondary} />
-          <Text style={styles.metricText}>{place.travelTime} min</Text>
-        </View>
-
-        <View style={styles.metricSeparator} />
-
-        <View
-          style={[
-            styles.statusPill,
-            place.status === 'OPEN' ? styles.statusOpen : styles.statusClosed,
-          ]}
-        >
           <View
             style={[
-              styles.statusDot,
-              { backgroundColor: place.status === 'OPEN' ? COLORS.ahead : COLORS.danger },
-            ]}
-          />
-          <Text
-            style={[
-              styles.statusText,
-              place.status === 'OPEN' ? styles.statusTextOpen : styles.statusTextClosed,
+              styles.statusPill,
+              place.status === 'OPEN' ? styles.statusOpen : styles.statusClosed,
             ]}
           >
-            {place.status === 'OPEN' ? 'Open' : 'Closed'}
-          </Text>
-        </View>
-      </View>
-
-      {/* Journey Relevance Commentary & Action Button */}
-      <View style={styles.commentaryRow}>
-        <View style={styles.relevanceLeft}>
-          <Ionicons
-            name={
-              place.direction === 'BEHIND'
-                ? 'warning-outline'
-                : place.direction === 'AHEAD'
-                ? 'checkmark-circle-outline'
-                : 'git-commit-outline'
-            }
-            size={13}
-            color={
-              place.direction === 'BEHIND'
-                ? COLORS.behind
-                : place.direction === 'AHEAD'
-                ? COLORS.ahead
-                : COLORS.onRoute
-            }
-          />
-          <Text
-            style={[
-              styles.commentaryText,
-              place.direction === 'BEHIND' && { color: COLORS.behind, fontWeight: '600' },
-            ]}
-            numberOfLines={1}
-          >
-            {place.direction === 'BEHIND'
-              ? 'Requires turning back'
-              : place.direction === 'AHEAD'
-              ? 'Directly ahead on your path'
-              : `On route (+${place.routeDeviation} min stop)`}
-          </Text>
+            <View
+              style={[
+                styles.statusDot,
+                { backgroundColor: place.status === 'OPEN' ? COLORS.ahead : COLORS.danger },
+              ]}
+            />
+            <Text
+              style={[
+                styles.statusText,
+                place.status === 'OPEN' ? styles.statusTextOpen : styles.statusTextClosed,
+              ]}
+            >
+              {place.status === 'OPEN' ? 'Open' : 'Closed'}
+            </Text>
+          </View>
         </View>
 
-        {onNavigatePress && (
-          <TouchableOpacity
-            style={styles.navigateAction}
-            onPress={() => onNavigatePress(place)}
-            activeOpacity={0.75}
-            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-          >
-            <Text style={styles.navigateActionText}>View Route</Text>
-            <Ionicons name="arrow-forward" size={13} color={COLORS.accent} />
-          </TouchableOpacity>
-        )}
+        {/* Footer: commentary + navigate button */}
+        <View style={styles.footerRow}>
+          <View style={styles.commentaryLeft}>
+            <Text
+              style={[
+                styles.commentaryText,
+                place.direction === 'BEHIND' && { color: COLORS.behind },
+                place.direction === 'AHEAD' && { color: COLORS.ahead },
+              ]}
+              numberOfLines={1}
+            >
+              {place.direction === 'BEHIND'
+                ? '⚠ Requires turning back'
+                : place.direction === 'AHEAD'
+                ? '✓ Directly ahead on path'
+                : `On route (+${place.routeDeviation} min stop)`}
+            </Text>
+          </View>
+
+          {onNavigatePress && (
+            <TouchableOpacity
+              style={styles.navigateBtn}
+              onPress={() => onNavigatePress(place)}
+              activeOpacity={0.75}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <Text style={styles.navigateBtnText}>Route</Text>
+              <Ionicons name="arrow-forward" size={12} color={COLORS.accent} />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -202,118 +192,103 @@ export const PlaceCard: React.FC<PlaceCardProps> = ({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: COLORS.surface,
     borderRadius: RADIUS.xl,
-    padding: 14,
     marginHorizontal: SPACING.lg,
     marginVertical: 5,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: COLORS.border,
     ...SHADOWS.sm,
+    flexDirection: 'row',
+    overflow: 'hidden',
   },
   cardCompact: {
-    padding: 10,
     marginVertical: 3,
+  },
+  accentBar: {
+    width: 3,
+    borderTopLeftRadius: RADIUS.xl,
+    borderBottomLeftRadius: RADIUS.xl,
+  },
+  cardInner: {
+    flex: 1,
+    padding: 13,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
+    marginBottom: 9,
+    gap: 10,
   },
-  directionBadge: {
-    flexDirection: 'row',
+  categoryIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.md,
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: RADIUS.full,
+    justifyContent: 'center',
   },
-  badgeIcon: {
-    marginRight: 4,
-  },
-  directionBadgeText: {
-    fontSize: 10.5,
-    fontWeight: '800',
-    letterSpacing: 0.3,
-  },
-  deviationText: {
-    fontSize: 10.5,
-    fontWeight: '700',
-    marginLeft: 3,
-  },
-  favButton: {
-    padding: 2,
-  },
-  titleSection: {
-    marginBottom: 8,
+  titleCol: {
+    flex: 1,
   },
   placeName: {
-    fontSize: 15.5,
+    fontSize: 14.5,
     fontWeight: '700',
     color: COLORS.textPrimary,
-    letterSpacing: -0.2,
-  },
-  categoryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 3,
-    gap: 4,
-  },
-  categoryText: {
-    fontSize: 11.5,
-    color: COLORS.textSecondary,
-    fontWeight: '600',
-  },
-  inlineDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: COLORS.textMuted,
-    marginHorizontal: 3,
+    letterSpacing: -0.1,
   },
   addressText: {
-    flex: 1,
-    fontSize: 11.5,
+    fontSize: 11,
     color: COLORS.textMuted,
+    marginTop: 2,
+  },
+  favButton: {
+    padding: 3,
   },
   metricsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.surfaceLight,
+    backgroundColor: COLORS.surfaceHigh,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: RADIUS.md,
-    marginBottom: 8,
+    marginBottom: 9,
+    gap: 5,
+    flexWrap: 'nowrap',
   },
-  ratingBadge: {
+  directionBadge: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: RADIUS.full,
     gap: 3,
+    marginRight: 3,
   },
-  ratingText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-  },
-  reviewCount: {
-    fontSize: 10.5,
-    color: COLORS.textMuted,
-  },
-  metricSeparator: {
-    width: 1,
-    height: 12,
-    backgroundColor: COLORS.cardBorder,
-    marginHorizontal: 8,
+  directionBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
   metricItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
+  },
+  metricDivider: {
+    width: 1,
+    height: 11,
+    backgroundColor: COLORS.border,
+    marginHorizontal: 2,
+  },
+  ratingText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#F59E0B',
   },
   metricText: {
-    fontSize: 11.5,
+    fontSize: 11,
     fontWeight: '600',
-    color: COLORS.textPrimary,
+    color: COLORS.textSecondary,
   },
   statusPill: {
     flexDirection: 'row',
@@ -321,14 +296,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: RADIUS.full,
-    gap: 4,
+    gap: 3,
     marginLeft: 'auto',
   },
   statusOpen: {
     backgroundColor: COLORS.aheadLight,
   },
   statusClosed: {
-    backgroundColor: '#FEE2E2',
+    backgroundColor: COLORS.dangerLight,
   },
   statusDot: {
     width: 5,
@@ -336,7 +311,7 @@ const styles = StyleSheet.create({
     borderRadius: 2.5,
   },
   statusText: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: '700',
   },
   statusTextOpen: {
@@ -345,36 +320,35 @@ const styles = StyleSheet.create({
   statusTextClosed: {
     color: COLORS.danger,
   },
-  commentaryRow: {
+  footerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: COLORS.surfaceLight,
+    borderTopColor: COLORS.border,
   },
-  relevanceLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
+  commentaryLeft: {
     flex: 1,
     marginRight: 6,
   },
   commentaryText: {
-    fontSize: 11.5,
+    fontSize: 11,
     color: COLORS.textSecondary,
     fontWeight: '500',
   },
-  navigateAction: {
+  navigateBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: 4,
     backgroundColor: COLORS.accentLight,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.borderBright,
   },
-  navigateActionText: {
+  navigateBtnText: {
     fontSize: 11,
     fontWeight: '700',
     color: COLORS.accent,

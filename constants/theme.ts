@@ -1,50 +1,73 @@
 export const COLORS = {
-  // Brand & Accents
-  primary: '#1E293B', // Deep Navy
-  primaryDark: '#0F172A',
-  primaryLight: '#334155',
-  accent: '#6366F1', // Indigo / Purple
-  accentLight: '#EEF2FF',
-  
-  // Directional & Status Colors
-  ahead: '#10B981', // Emerald Green - AHEAD / Forward
-  aheadLight: '#ECFDF5',
-  onRoute: '#3B82F6', // Blue - ON YOUR ROUTE / Minimal deviation
-  onRouteLight: '#EFF6FF',
-  behind: '#F59E0B', // Amber / Warning - BEHIND / Requires turning back
-  behindLight: '#FFFBEB',
-  
-  // Semantic
-  danger: '#EF4444',
-  dangerLight: '#FEF2F2',
-  success: '#10B981',
-  warning: '#F59E0B',
-  info: '#3B82F6',
-  
-  // Neutrals & Surfaces
-  background: '#F8FAFC',
-  cardBg: '#FFFFFF',
-  cardBorder: '#E2E8F0',
-  surfaceLight: '#F1F5F9',
-  
-  // Text
-  textPrimary: '#0F172A',
-  textSecondary: '#64748B',
-  textMuted: '#94A3B8',
-  textInverse: '#FFFFFF',
-  
-  // Map Elements
-  mapBg: '#E8EDF2',
-  mapRoad: '#FFFFFF',
-  mapRoadBorder: '#CBD5E1',
-  mapHighway: '#FDE68A',
-  mapRoute: '#3B82F6',
-  mapRouteAhead: '#10B981',
-  mapUserPulse: 'rgba(59, 130, 246, 0.25)',
-  
-  // Overlay & Shadows
-  overlay: 'rgba(15, 23, 42, 0.5)',
-  shadow: '#0F172A',
+  // ── Brand Backgrounds ──────────────────────────────────────
+  background:    '#0A0F1E',   // Deep space navy
+  backgroundAlt: '#0D1628',   // Slightly lighter for card surfaces
+  surface:       '#111827',   // Card background
+  surfaceHigh:   '#1A2540',   // Elevated card / panel
+  surfaceGlass:  'rgba(26, 37, 64, 0.85)', // Glass panels
+  border:        'rgba(99, 132, 255, 0.15)',
+  borderBright:  'rgba(99, 132, 255, 0.35)',
+
+  // ── Primary Accent — Cyan / Electric Blue ──────────────────
+  accent:        '#4F8EF7',   // Electric blue primary
+  accentCyan:    '#06B6D4',   // Cyan highlights
+  accentGlow:    'rgba(79, 142, 247, 0.25)',
+  accentLight:   'rgba(79, 142, 247, 0.12)',
+
+  // ── Directional Status Colors ──────────────────────────────
+  ahead:         '#22C55E',   // Bright green — AHEAD / forward
+  aheadLight:    'rgba(34, 197, 94, 0.14)',
+  aheadGlow:     'rgba(34, 197, 94, 0.3)',
+  onRoute:       '#3B82F6',   // Blue — ON ROUTE / minimal deviation
+  onRouteLight:  'rgba(59, 130, 246, 0.14)',
+  behind:        '#F59E0B',   // Amber — BEHIND / requires backtrack
+  behindLight:   'rgba(245, 158, 11, 0.14)',
+
+  // ── Semantic ───────────────────────────────────────────────
+  danger:        '#EF4444',
+  dangerLight:   'rgba(239, 68, 68, 0.14)',
+  success:       '#22C55E',
+  warning:       '#F59E0B',
+  warningLight:  'rgba(245, 158, 11, 0.14)',
+  info:          '#4F8EF7',
+
+  // ── Orange Category Highlights ─────────────────────────────
+  orange:        '#F97316',
+  orangeLight:   'rgba(249, 115, 22, 0.14)',
+
+  // ── Typography ─────────────────────────────────────────────
+  textPrimary:   '#F0F4FF',   // Near-white
+  textSecondary: '#8B9FC4',   // Blue-grey muted
+  textMuted:     '#4B5D7E',   // Very muted
+  textInverse:   '#0A0F1E',
+
+  // ── Map Elements ───────────────────────────────────────────
+  mapBg:         '#0D1628',
+  mapGrid:       'rgba(79, 142, 247, 0.06)',
+  mapRoad:       '#1E2D4A',
+  mapRoadBorder: '#243350',
+  mapHighway:    '#1A3A6E',
+  mapRoute:      '#4F8EF7',
+  mapRouteAhead: '#22C55E',
+  mapUserPulse:  'rgba(79, 142, 247, 0.2)',
+
+  // ── Navigation Bar ─────────────────────────────────────────
+  navBg:         '#0D1628',
+  navBorder:     'rgba(79, 142, 247, 0.12)',
+  navActive:     '#4F8EF7',
+  navInactive:   '#4B5D7E',
+
+  // ── Overlays ───────────────────────────────────────────────
+  overlay:       'rgba(10, 15, 30, 0.7)',
+  shadow:        '#000000',
+
+  // ── Legacy aliases (keeps existing code compatible) ────────
+  primary:       '#1A2540',
+  primaryDark:   '#0D1628',
+  primaryLight:  '#243350',
+  cardBg:        '#111827',
+  cardBorder:    'rgba(99, 132, 255, 0.15)',
+  surfaceLight:  '#1A2540',
 };
 
 export const SPACING = {
@@ -68,24 +91,31 @@ export const RADIUS = {
 
 export const SHADOWS = {
   sm: {
-    shadowColor: COLORS.shadow,
+    shadowColor: '#000000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOpacity: 0.5,
+    shadowRadius: 6,
+    elevation: 3,
   },
   md: {
-    shadowColor: COLORS.shadow,
+    shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOpacity: 0.6,
+    shadowRadius: 12,
+    elevation: 6,
   },
   lg: {
-    shadowColor: COLORS.shadow,
+    shadowColor: '#000000',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowOpacity: 0.7,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  glow: {
+    shadowColor: '#4F8EF7',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 12,
+    elevation: 6,
   },
 };

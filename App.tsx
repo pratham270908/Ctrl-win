@@ -151,7 +151,7 @@ const MainNavigator: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
       {/* 1. SPLASH SCREEN */}
       {currentScreen === 'SPLASH' && (

@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import {
   View,
   Text,
@@ -145,7 +145,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             onPress={onOpenFavorites}
             activeOpacity={0.7}
           >
-            <View style={[styles.menuIconCircle, { backgroundColor: '#FEE2E2' }]}>
+            <View style={[styles.menuIconCircle, { backgroundColor: COLORS.dangerLight }]}>
               <Ionicons name="heart" size={18} color={COLORS.danger} />
             </View>
             <View style={styles.menuTextCol}>
@@ -218,7 +218,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         </TouchableOpacity>
 
         <Text style={styles.versionNote}>
-          Smart Directional Location Finder • v1.0.0
+          Smart Directional Location Finder â€¢ v1.0.0
         </Text>
 
         <View style={{ height: 40 }} />
@@ -238,9 +238,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: COLORS.surface,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.cardBorder,
+    borderBottomColor: COLORS.border,
   },
   headerInfo: {
     flex: 1,
@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: COLORS.surfaceLight,
+    backgroundColor: COLORS.surfaceHigh,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -268,12 +268,12 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
   },
   userCard: {
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: COLORS.surface,
     borderRadius: RADIUS.xxl,
     padding: SPACING.xl,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: COLORS.border,
     marginBottom: SPACING.lg,
     ...SHADOWS.md,
   },
@@ -339,12 +339,12 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: COLORS.surface,
     padding: SPACING.md,
     borderRadius: RADIUS.xl,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: COLORS.border,
     ...SHADOWS.sm,
   },
   statNumber: {
@@ -366,10 +366,10 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   menuCard: {
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: COLORS.surface,
     borderRadius: RADIUS.xl,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: COLORS.border,
     overflow: 'hidden',
     marginBottom: SPACING.xl,
     ...SHADOWS.sm,
@@ -402,7 +402,7 @@ const styles = StyleSheet.create({
   },
   menuDivider: {
     height: 1,
-    backgroundColor: COLORS.surfaceLight,
+    backgroundColor: COLORS.surfaceHigh,
     marginLeft: 66,
   },
   logoutBtn: {
@@ -411,7 +411,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     height: 48,
     borderRadius: RADIUS.xl,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: COLORS.dangerLight,
     gap: 8,
     borderWidth: 1,
     borderColor: '#FECACA',
@@ -428,3 +428,4 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
   },
 });
+

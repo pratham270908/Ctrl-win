@@ -1,5 +1,7 @@
 import { RouteOption, Coordinates } from '../types';
 import { MOCK_ROUTE_OPTIONS, MOCK_TRANSIT_ROUTES, PublicTransitRoute } from '../data/mockRoutes';
+import { API_CONFIG } from '../constants/apiConfig';
+import { decodePolyline } from '../utils/polylineUtils';
 import { APP_CONFIG } from '../constants/config';
 
 export interface TurnInstruction {
@@ -13,34 +15,163 @@ export interface TurnInstruction {
 
 /**
  * Interface defining the Directions & Routing Service contract.
- * Allows swapping mock/prototype routes with Google Routes/Directions API later.
  */
 export interface IDirectionsService {
   getRouteOptions(origin?: Coordinates, destination?: Coordinates): Promise<RouteOption[]>;
   getTurnByTurnInstructions(): Promise<TurnInstruction[]>;
   getPublicTransitRoutes(): Promise<PublicTransitRoute[]>;
+  getActiveRoutePolyline(): Coordinates[];
+}
+
+function getManeuverIcon(maneuver?: string): string {
+  if (!maneuver) return 'arrow-up';
+  const m = maneuver.toUpperCase();
+  if (m.includes('LEFT')) return 'arrow-back-outline';
+  if (m.includes('RIGHT')) return 'arrow-forward-outline';
+  if (m.includes('UTURN')) return 'return-up-back';
+  if (m.includes('RAMP') || m.includes('FORK')) return 'git-branch-outline';
+  if (m.includes('ROUNDABOUT')) return 'sync-outline';
+  if (m.includes('DEPART') || m.includes('STRAIGHT')) return 'arrow-up';
+  return 'navigate-outline';
 }
 
 class DirectionsService implements IDirectionsService {
+  private activePolyline: Coordinates[] = [];
+  private liveInstructions: TurnInstruction[] = [];
+
   /**
-   * Retrieves available route options for destination
+   * Retrieves available route options for destination.
+   * Calls Google Routes API (New) when configured, with graceful fallback to mock routes.
    */
   async getRouteOptions(
-    _origin?: Coordinates,
-    _destination?: Coordinates
+    origin?: Coordinates,
+    destination?: Coordinates
   ): Promise<RouteOption[]> {
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    const originCoords = origin || {
+      latitude: APP_CONFIG.defaultLocation.latitude,
+      longitude: APP_CONFIG.defaultLocation.longitude,
+    };
+    const destCoords = destination || {
+      latitude: APP_CONFIG.defaultDestination.latitude,
+      longitude: APP_CONFIG.defaultDestination.longitude,
+    };
+
+    if (API_CONFIG.hasDirectionsApi()) {
+      try {
+        const response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': API_CONFIG.directionsApiKey,
+            'X-Goog-FieldMask':
+              'routes.duration,routes.distanceMeters,routes.description,routes.polyline.encodedPolyline,routes.legs.steps.navigationInstruction,routes.legs.steps.distanceMeters,routes.legs.steps.staticDuration',
+          },
+          body: JSON.stringify({
+            origin: {
+              location: {
+                latLng: {
+                  latitude: originCoords.latitude,
+                  longitude: originCoords.longitude,
+                },
+              },
+            },
+            destination: {
+              location: {
+                latLng: {
+                  latitude: destCoords.latitude,
+                  longitude: destCoords.longitude,
+                },
+              },
+            },
+            travelMode: 'DRIVE',
+            routingPreference: 'TRAFFIC_AWARE',
+            languageCode: 'en-US',
+            computeAlternativeRoutes: true,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data && Array.isArray(data.routes) && data.routes.length > 0) {
+            const parsedRoutes: RouteOption[] = data.routes.map((route: any, index: number) => {
+              const seconds = parseInt((route.duration || '600s').replace('s', ''), 10) || 600;
+              const minutes = Math.max(1, Math.round(seconds / 60));
+              const distKm = Math.round(((route.distanceMeters || 2000) / 1000) * 10) / 10;
+
+              if (index === 0 && route.polyline?.encodedPolyline) {
+                this.activePolyline = decodePolyline(route.polyline.encodedPolyline);
+              }
+
+              // Extract turn-by-turn instructions from first route
+              if (index === 0 && route.legs?.[0]?.steps) {
+                this.liveInstructions = route.legs[0].steps.map((step: any, stepIdx: number) => {
+                  const rawInst = step.navigationInstruction?.instructions || 'Continue straight';
+                  const cleanInst = rawInst.replace(/\n/g, ' ');
+                  const dist = step.distanceMeters ?? 100;
+                  const distText = dist >= 1000 ? `${(dist / 1000).toFixed(1)} km` : `${dist} m`;
+
+                  return {
+                    id: `turn-live-${stepIdx + 1}`,
+                    instruction: cleanInst,
+                    distanceText: distText,
+                    icon: getManeuverIcon(step.navigationInstruction?.maneuver),
+                    streetName: rawInst.split('\n')[0] || 'Corridor Road',
+                    isDestination: stepIdx === route.legs[0].steps.length - 1,
+                  };
+                });
+              }
+
+              const type =
+                index === 0 ? 'FASTEST' : index === 1 ? 'LOWEST_DEVIATION' : 'BEST_OVERALL';
+              const title =
+                index === 0
+                  ? 'Fastest Route (Live Traffic)'
+                  : index === 1
+                  ? 'Alternative Avenue Route'
+                  : 'Scenic Corridor';
+
+              return {
+                id: `route-live-${index + 1}`,
+                type,
+                title,
+                subtitle: route.description ? `Via ${route.description}` : 'Optimal via current traffic',
+                estimatedMinutes: minutes,
+                distanceKm: distKm,
+                trafficLevel: index === 0 ? 'LOW' : 'MODERATE',
+                highlights: [
+                  'Live traffic calibrated',
+                  'Real road geometry',
+                  'Turn-by-turn guidance available',
+                ],
+                stopsCount: index,
+              };
+            });
+
+            return parsedRoutes;
+          }
+        }
+      } catch (err) {
+        // Fallback gracefully on network error or quota limits
+      }
+    }
+
+    // Default prototype fallback
     return [...MOCK_ROUTE_OPTIONS];
   }
 
   /**
-   * Retrieves turn-by-turn navigation instructions for active navigation
+   * Retrieves turn-by-turn navigation instructions for active navigation.
+   * Returns live Google steps if available, or rich prototype steps.
    */
   async getTurnByTurnInstructions(): Promise<TurnInstruction[]> {
+    if (this.liveInstructions.length > 0) {
+      return [...this.liveInstructions];
+    }
+
     return [
       {
         id: 'turn-1',
-        instruction: 'Continue straight',
+        instruction: 'Continue straight on Mindspace Flyover',
         distanceText: '250 m',
         icon: 'arrow-up',
         streetName: 'Cyber Towers Flyover',
@@ -71,10 +202,17 @@ class DirectionsService implements IDirectionsService {
   }
 
   /**
+   * Returns decoded coordinates along active route polyline
+   */
+  getActiveRoutePolyline(): Coordinates[] {
+    return this.activePolyline;
+  }
+
+  /**
    * Retrieves public transit schedules
    */
   async getPublicTransitRoutes(): Promise<PublicTransitRoute[]> {
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    await new Promise((resolve) => setTimeout(resolve, 60));
     return [...MOCK_TRANSIT_ROUTES];
   }
 }

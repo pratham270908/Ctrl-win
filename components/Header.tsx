@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
@@ -13,20 +13,20 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   greeting,
-  subtitle = 'Cyber Towers Corridor • Hyderabad',
+  subtitle = 'Cyber Towers Corridor  Hyderabad',
   onProfilePress,
   onNotificationPress,
 }) => {
   const { user } = useAuth();
   const displayName = user?.name || 'Explorer';
-  const finalGreeting = greeting || `Hello, ${displayName} 👋`;
+  const finalGreeting = greeting || `Hello, ${displayName}`;
 
   return (
     <View style={styles.container}>
       <View style={styles.left}>
         <Text style={styles.greeting}>{finalGreeting}</Text>
         <View style={styles.locationRow}>
-          <Ionicons name="location-sharp" size={13} color={COLORS.accent} />
+          <Ionicons name="location-sharp" size={12} color={COLORS.accentCyan} />
           <Text style={styles.subtitle} numberOfLines={1}>
             {subtitle}
           </Text>
@@ -69,8 +69,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
-    paddingTop: 10,
-    paddingBottom: 6,
+    paddingTop: 12,
+    paddingBottom: 8,
     backgroundColor: COLORS.background,
   },
   left: {
@@ -78,20 +78,20 @@ const styles = StyleSheet.create({
     marginRight: SPACING.md,
   },
   greeting: {
-    fontSize: 21,
+    fontSize: 20,
     fontWeight: '800',
     color: COLORS.textPrimary,
-    letterSpacing: -0.4,
+    letterSpacing: -0.3,
   },
   locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 3,
+    gap: 4,
   },
   subtitle: {
-    fontSize: 12,
+    fontSize: 11.5,
     color: COLORS.textSecondary,
-    marginLeft: 3,
     fontWeight: '500',
   },
   rightActions: {
@@ -103,11 +103,11 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: COLORS.surfaceHigh,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: COLORS.border,
     ...SHADOWS.sm,
     position: 'relative',
   },
@@ -120,7 +120,7 @@ const styles = StyleSheet.create({
     borderRadius: 3.5,
     backgroundColor: COLORS.danger,
     borderWidth: 1.5,
-    borderColor: '#FFFFFF',
+    borderColor: COLORS.background,
   },
   avatarButton: {
     width: 38,
@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
   avatarPlaceholder: {
     width: '100%',
     height: '100%',
-    backgroundColor: COLORS.accentLight,
+    backgroundColor: COLORS.surfaceHigh,
     alignItems: 'center',
     justifyContent: 'center',
   },

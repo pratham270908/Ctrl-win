@@ -35,14 +35,14 @@ const TABS: TabItem[] = [
   {
     id: 'activity',
     label: 'Activity',
-    activeIcon: 'compass',
-    inactiveIcon: 'compass-outline',
+    activeIcon: 'pulse',
+    inactiveIcon: 'pulse-outline',
   },
   {
     id: 'profile',
     label: 'Profile',
-    activeIcon: 'person',
-    inactiveIcon: 'person-outline',
+    activeIcon: 'person-circle',
+    inactiveIcon: 'person-circle-outline',
   },
 ];
 
@@ -58,7 +58,7 @@ export const CustomBottomNav: React.FC<CustomBottomNavProps> = ({
       style={[
         styles.navBar,
         {
-          paddingBottom: Math.max(10, insets.bottom),
+          paddingBottom: Math.max(12, insets.bottom),
         },
       ]}
     >
@@ -81,7 +81,7 @@ export const CustomBottomNav: React.FC<CustomBottomNavProps> = ({
               <Ionicons
                 name={(isActive ? tab.activeIcon : tab.inactiveIcon) as any}
                 size={22}
-                color={isActive ? COLORS.accent : COLORS.textMuted}
+                color={isActive ? COLORS.navActive : COLORS.navInactive}
               />
               {showBadge && (
                 <View style={styles.badge}>
@@ -111,10 +111,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    backgroundColor: COLORS.cardBg,
-    paddingTop: 8,
+    backgroundColor: COLORS.navBg,
+    paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: COLORS.cardBorder,
+    borderTopColor: COLORS.navBorder,
     ...SHADOWS.md,
   },
   tabButton: {
@@ -126,8 +126,8 @@ const styles = StyleSheet.create({
   },
   iconWrapper: {
     position: 'relative',
-    height: 32,
-    paddingHorizontal: 16,
+    height: 34,
+    paddingHorizontal: 18,
     borderRadius: RADIUS.full,
     alignItems: 'center',
     justifyContent: 'center',
@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
   badge: {
     position: 'absolute',
     top: -2,
-    right: 6,
+    right: 8,
     backgroundColor: COLORS.danger,
     borderRadius: 8,
     paddingHorizontal: 4,
@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
-    borderColor: '#FFFFFF',
+    borderColor: COLORS.navBg,
   },
   badgeText: {
     color: '#FFFFFF',
@@ -157,16 +157,17 @@ const styles = StyleSheet.create({
     lineHeight: 11,
   },
   tabLabel: {
-    fontSize: 11,
+    fontSize: 10.5,
     marginTop: 3,
     fontWeight: '600',
     letterSpacing: 0.2,
   },
   tabLabelActive: {
-    color: COLORS.accent,
+    color: COLORS.navActive,
     fontWeight: '700',
   },
   tabLabelInactive: {
-    color: COLORS.textSecondary,
+    color: COLORS.navInactive,
   },
 });
+
