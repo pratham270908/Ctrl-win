@@ -6,10 +6,21 @@
 export const API_CONFIG = {
   placesApiKey:
     process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY ||
+    process.env.GOOGLE_PLACES_API_KEY ||
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
+    '',
+  routesApiKey:
+    process.env.EXPO_PUBLIC_GOOGLE_ROUTES_API_KEY ||
+    process.env.GOOGLE_ROUTES_API_KEY ||
+    process.env.EXPO_PUBLIC_GOOGLE_DIRECTIONS_API_KEY ||
+    process.env.GOOGLE_DIRECTIONS_API_KEY ||
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
     '',
   directionsApiKey:
+    process.env.EXPO_PUBLIC_GOOGLE_ROUTES_API_KEY ||
+    process.env.GOOGLE_ROUTES_API_KEY ||
     process.env.EXPO_PUBLIC_GOOGLE_DIRECTIONS_API_KEY ||
+    process.env.GOOGLE_DIRECTIONS_API_KEY ||
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
     '',
   mapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '',
@@ -26,8 +37,12 @@ export const API_CONFIG = {
     return Boolean(this.placesApiKey && this.placesApiKey.trim().length > 0);
   },
 
+  hasRoutesApi(): boolean {
+    return Boolean(this.routesApiKey && this.routesApiKey.trim().length > 0);
+  },
+
   hasDirectionsApi(): boolean {
-    return Boolean(this.directionsApiKey && this.directionsApiKey.trim().length > 0);
+    return this.hasRoutesApi();
   },
 
   hasGeocodingApi(): boolean {

@@ -100,7 +100,133 @@ class DirectionsService implements IDirectionsService {
       longitude: APP_CONFIG.defaultDestination.longitude,
     };
 
-    // 1. Try Mapbox Directions API if key configured
+    // 1. Try Google Routes API (Compute Routes) if key configured
+    if (API_CONFIG.hasRoutesApi()) {
+      try {
+        const response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': API_CONFIG.routesApiKey,
+            'X-Goog-FieldMask':
+              'routes.duration,routes.distanceMeters,routes.description,routes.polyline.encodedPolyline,routes.legs.steps.navigationInstruction,routes.legs.steps.distanceMeters,routes.legs.steps.staticDuration',
+          },
+          body: JSON.stringify({
+            origin: {
+              location: {
+                latLng: {
+                  latitude: originCoords.latitude,
+                  longitude: originCoords.longitude,
+                },
+              },
+            },
+            destination: {
+              location: {
+                latLng: {
+                  latitude: destCoords.latitude,
+                  longitude: destCoords.longitude,
+                },
+              },
+            },
+            travelMode: 'DRIVE',
+            routingPreference: 'TRAFFIC_AWARE',
+            languageCode: 'en-US',
+            computeAlternativeRoutes: true,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data && Array.isArray(data.routes) && data.routes.length > 0) {
+            this.routePolylines.clear();
+            const parsedRoutes: RouteOption[] = data.routes.map((route: any, index: number) => {
+              const seconds = parseInt((route.duration || '600s').replace('s', ''), 10) || 600;
+              const minutes = Math.max(1, Math.round(seconds / 60));
+              const distKm = Math.round(((route.distanceMeters || 2000) / 1000) * 10) / 10;
+              const routeId = `route-live-${index + 1}`;
+              const decodedCoords = route.polyline?.encodedPolyline
+                ? decodePolyline(route.polyline.encodedPolyline)
+                : [];
+
+              this.routePolylines.set(routeId, decodedCoords);
+              if (index === 0) {
+                this.activePolyline = decodedCoords;
+              }
+
+              // Extract turn-by-turn instructions from first route
+              if (index === 0 && route.legs?.[0]?.steps) {
+                this.liveInstructions = route.legs[0].steps.map((step: any, stepIdx: number) => {
+                  const rawInst = step.navigationInstruction?.instructions || 'Continue straight';
+                  const cleanInst = rawInst.replace(/\n/g, ' ');
+                  const dist = step.distanceMeters ?? 100;
+                  const distText = dist >= 1000 ? `${(dist / 1000).toFixed(1)} km` : `${dist} m`;
+
+                  return {
+                    id: `turn-live-${stepIdx + 1}`,
+                    instruction: cleanInst,
+                    distanceText: distText,
+                    icon: getManeuverIcon(step.navigationInstruction?.maneuver),
+                    streetName: rawInst.split('\n')[0] || 'Corridor Road',
+                    isDestination: stepIdx === route.legs[0].steps.length - 1,
+                  };
+                });
+              }
+
+              const type =
+                index === 0 ? 'FASTEST' : index === 1 ? 'LOWEST_DEVIATION' : 'BEST_OVERALL';
+              const title =
+                index === 0
+                  ? 'Fastest Route (Google Routes Live)'
+                  : index === 1
+                  ? 'Alternative Avenue Route'
+                  : 'Scenic Corridor';
+
+              return {
+                id: routeId,
+                type,
+                title,
+                subtitle: route.description ? `Via ${route.description}` : 'Optimal via current traffic',
+                estimatedMinutes: minutes,
+                distanceKm: distKm,
+                trafficLevel: index === 0 ? 'LOW' : 'MODERATE',
+                highlights: [
+                  'Google Routes real road geometry',
+                  'Live traffic calibrated',
+                  'Turn-by-turn guidance available',
+                ],
+                stopsCount: index,
+                coordinates: decodedCoords,
+              };
+            });
+
+            // If Google Routes returned 1 route, provide a secondary variant for the route preview UI
+            if (parsedRoutes.length === 1) {
+              const alt1Coords = generateFallbackPolyline(originCoords, destCoords, 1);
+              const alt1Id = 'route-live-2';
+              this.routePolylines.set(alt1Id, alt1Coords);
+              parsedRoutes.push({
+                id: alt1Id,
+                type: 'LOWEST_DEVIATION',
+                title: 'Alternative Avenue Route',
+                subtitle: 'Direct Main Avenue corridor',
+                estimatedMinutes: parsedRoutes[0].estimatedMinutes + 2,
+                distanceKm: Math.round((parsedRoutes[0].distanceKm + 0.3) * 10) / 10,
+                trafficLevel: 'MODERATE',
+                highlights: ['Alternative road corridor', 'Smooth traffic flow'],
+                stopsCount: 1,
+                coordinates: alt1Coords,
+              });
+            }
+
+            return parsedRoutes;
+          }
+        }
+      } catch (err) {
+        // Fallback gracefully on network error or quota limits
+      }
+    }
+
+    // 2. Try Mapbox Directions API if key configured
     if (API_CONFIG.hasMapboxApi()) {
       try {
         const mbUrl = `https://api.mapbox.com/directions/v5/mapbox/driving/${originCoords.longitude},${originCoords.latitude};${destCoords.longitude},${destCoords.latitude}?alternatives=true&geometries=polyline&overview=full&steps=true&access_token=${API_CONFIG.mapboxApiKey}`;
@@ -171,113 +297,6 @@ class DirectionsService implements IDirectionsService {
         }
       } catch (err) {
         console.warn('Mapbox Directions API notice (using fallback):', err);
-      }
-    }
-
-    // 2. Try Google Routes API if key configured
-    if (API_CONFIG.hasDirectionsApi()) {
-      try {
-        const response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Goog-Api-Key': API_CONFIG.directionsApiKey,
-            'X-Goog-FieldMask':
-              'routes.duration,routes.distanceMeters,routes.description,routes.polyline.encodedPolyline,routes.legs.steps.navigationInstruction,routes.legs.steps.distanceMeters,routes.legs.steps.staticDuration',
-          },
-          body: JSON.stringify({
-            origin: {
-              location: {
-                latLng: {
-                  latitude: originCoords.latitude,
-                  longitude: originCoords.longitude,
-                },
-              },
-            },
-            destination: {
-              location: {
-                latLng: {
-                  latitude: destCoords.latitude,
-                  longitude: destCoords.longitude,
-                },
-              },
-            },
-            travelMode: 'DRIVE',
-            routingPreference: 'TRAFFIC_AWARE',
-            languageCode: 'en-US',
-            computeAlternativeRoutes: true,
-          }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data && Array.isArray(data.routes) && data.routes.length > 0) {
-            this.routePolylines.clear();
-            const parsedRoutes: RouteOption[] = data.routes.map((route: any, index: number) => {
-              const seconds = parseInt((route.duration || '600s').replace('s', ''), 10) || 600;
-              const minutes = Math.max(1, Math.round(seconds / 60));
-              const distKm = Math.round(((route.distanceMeters || 2000) / 1000) * 10) / 10;
-              const routeId = `route-live-${index + 1}`;
-              const decodedCoords = route.polyline?.encodedPolyline
-                ? decodePolyline(route.polyline.encodedPolyline)
-                : [];
-
-              this.routePolylines.set(routeId, decodedCoords);
-              if (index === 0) {
-                this.activePolyline = decodedCoords;
-              }
-
-              // Extract turn-by-turn instructions from first route
-              if (index === 0 && route.legs?.[0]?.steps) {
-                this.liveInstructions = route.legs[0].steps.map((step: any, stepIdx: number) => {
-                  const rawInst = step.navigationInstruction?.instructions || 'Continue straight';
-                  const cleanInst = rawInst.replace(/\n/g, ' ');
-                  const dist = step.distanceMeters ?? 100;
-                  const distText = dist >= 1000 ? `${(dist / 1000).toFixed(1)} km` : `${dist} m`;
-
-                  return {
-                    id: `turn-live-${stepIdx + 1}`,
-                    instruction: cleanInst,
-                    distanceText: distText,
-                    icon: getManeuverIcon(step.navigationInstruction?.maneuver),
-                    streetName: rawInst.split('\n')[0] || 'Corridor Road',
-                    isDestination: stepIdx === route.legs[0].steps.length - 1,
-                  };
-                });
-              }
-
-              const type =
-                index === 0 ? 'FASTEST' : index === 1 ? 'LOWEST_DEVIATION' : 'BEST_OVERALL';
-              const title =
-                index === 0
-                  ? 'Fastest Route (Live Traffic)'
-                  : index === 1
-                  ? 'Alternative Avenue Route'
-                  : 'Scenic Corridor';
-
-              return {
-                id: routeId,
-                type,
-                title,
-                subtitle: route.description ? `Via ${route.description}` : 'Optimal via current traffic',
-                estimatedMinutes: minutes,
-                distanceKm: distKm,
-                trafficLevel: index === 0 ? 'LOW' : 'MODERATE',
-                highlights: [
-                  'Live traffic calibrated',
-                  'Real road geometry',
-                  'Turn-by-turn guidance available',
-                ],
-                stopsCount: index,
-                coordinates: decodedCoords,
-              };
-            });
-
-            return parsedRoutes;
-          }
-        }
-      } catch (err) {
-        // Fallback gracefully on network error or quota limits
       }
     }
 

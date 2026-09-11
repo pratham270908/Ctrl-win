@@ -1,4 +1,4 @@
-import { Place, PlaceCategory, SortCriteria, Coordinates, RouteOption } from '../types';
+import { Place, PlaceCategory, SortCriteria, Coordinates, RouteOption, DirectionClassification } from '../types';
 import { MOCK_PLACES } from '../data/mockPlaces';
 import { sortPlaces } from '../utils/sortingUtils';
 import {
@@ -295,6 +295,7 @@ class PlacesService implements IPlacesService {
 
   /**
    * Fetches smart recommendations strictly along/ahead of an active route to a destination.
+   * Leverages real route polyline geometry when available to determine ON_ROUTE, AHEAD, and detour deviation.
    */
   async getRouteRecommendations(
     destinationPlace?: Place | null,
@@ -312,15 +313,54 @@ class PlacesService implements IPlacesService {
       ? activeRoute.distanceKm * 1000 + 800
       : 3500;
 
-    let candidates = all.filter((p) => {
-      if (destinationPlace && p.id === destinationPlace.id) return false;
-      const isForward = p.direction === 'AHEAD' || p.direction === 'ON_ROUTE';
-      if (!isForward) return false;
-      const minimalDeviation = p.routeDeviation <= 4;
-      if (!minimalDeviation) return false;
-      const withinCorridor = p.distance <= maxDistanceMeters;
-      return withinCorridor;
-    });
+    const routeCoords =
+      activeRoute?.coordinates && activeRoute.coordinates.length > 1
+        ? activeRoute.coordinates
+        : undefined;
+
+    let candidates = all
+      .map((p) => {
+        if (routeCoords) {
+          // Calculate shortest distance to the active route polyline
+          let minDistanceToRoute = Infinity;
+          let closestIndex = 0;
+          for (let i = 0; i < routeCoords.length; i++) {
+            const d = calculateDistanceMeters(p.coordinates, routeCoords[i]);
+            if (d < minDistanceToRoute) {
+              minDistanceToRoute = d;
+              closestIndex = i;
+            }
+          }
+
+          let direction: DirectionClassification = p.direction;
+          let routeDeviation = p.routeDeviation;
+
+          // Points within 350m of the actual route polyline are directly ON_ROUTE
+          if (minDistanceToRoute <= 350) {
+            direction = 'ON_ROUTE';
+            routeDeviation = 0;
+          } else if (closestIndex > 0 && closestIndex < routeCoords.length - 1) {
+            direction = 'AHEAD';
+            routeDeviation = Math.min(5, Math.max(1, Math.round(minDistanceToRoute / 300)));
+          }
+
+          return {
+            ...p,
+            direction,
+            routeDeviation,
+          };
+        }
+        return p;
+      })
+      .filter((p) => {
+        if (destinationPlace && p.id === destinationPlace.id) return false;
+        const isForward = p.direction === 'AHEAD' || p.direction === 'ON_ROUTE';
+        if (!isForward) return false;
+        const minimalDeviation = p.routeDeviation <= 4;
+        if (!minimalDeviation) return false;
+        const withinCorridor = p.distance <= maxDistanceMeters;
+        return withinCorridor;
+      });
 
     if (filterOption === 'AHEAD_ONLY') {
       candidates = candidates.filter((p) => p.direction === 'AHEAD');
@@ -476,11 +516,38 @@ class PlacesService implements IPlacesService {
   }
 
   /**
-   * Retrieves single place details by ID
+   * Retrieves single place details by ID.
+   * If not cached locally, queries Google Places API Place Details when configured.
    */
   async getPlaceById(id: string): Promise<Place | null> {
     const found = this.places.find((p) => p.id === id);
     if (found) return { ...found };
+
+    if (API_CONFIG.hasPlacesApi() && (id.startsWith('places/') || id.startsWith('ChI') || id.startsWith('google-'))) {
+      try {
+        const placeResource = id.startsWith('places/') ? id : `places/${id}`;
+        const response = await fetch(`https://places.googleapis.com/v1/${placeResource}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': API_CONFIG.placesApiKey,
+            'X-Goog-FieldMask':
+              'id,displayName,formattedAddress,location,rating,userRatingCount,currentOpeningHours,primaryType,types,nationalPhoneNumber',
+          },
+        });
+
+        if (response.ok) {
+          const gPlace = await response.json();
+          const userLocation = locationService.getCoordinates();
+          const mapped = this.mapGooglePlace(gPlace, 'Restaurant', userLocation, 45, 38);
+          this.places.push(mapped);
+          return mapped;
+        }
+      } catch {
+        // Fallback gracefully
+      }
+    }
+
     return null;
   }
 
