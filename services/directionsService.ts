@@ -58,6 +58,8 @@ export interface IDirectionsService {
   getTurnByTurnInstructions(): Promise<TurnInstruction[]>;
   getPublicTransitRoutes(): Promise<PublicTransitRoute[]>;
   getActiveRoutePolyline(): Coordinates[];
+  setActiveRouteById(routeId: string): Coordinates[];
+  getRoutePolylineById(routeId: string): Coordinates[] | undefined;
 }
 
 function getManeuverIcon(maneuver?: string): string {
@@ -107,12 +109,16 @@ class DirectionsService implements IDirectionsService {
         if (response.ok) {
           const data = await response.json();
           if (data && Array.isArray(data.routes) && data.routes.length > 0) {
+            this.routePolylines.clear();
             const parsedRoutes: RouteOption[] = data.routes.map((route: any, index: number) => {
               const minutes = Math.max(1, Math.round(route.duration / 60));
               const distKm = Math.round((route.distance / 1000) * 10) / 10;
+              const routeId = `route-mb-${index + 1}`;
+              const decodedCoords = route.geometry ? decodePolyline(route.geometry) : [];
 
-              if (index === 0 && route.geometry) {
-                this.activePolyline = decodePolyline(route.geometry);
+              this.routePolylines.set(routeId, decodedCoords);
+              if (index === 0) {
+                this.activePolyline = decodedCoords;
               }
 
               if (index === 0 && route.legs?.[0]?.steps) {
@@ -143,7 +149,7 @@ class DirectionsService implements IDirectionsService {
 
               const summaryText = route.legs?.[0]?.summary || '';
               return {
-                id: `route-mb-${index + 1}`,
+                id: routeId,
                 type,
                 title,
                 subtitle: summaryText ? `Via ${summaryText}` : 'Optimal navigation path',
@@ -156,6 +162,7 @@ class DirectionsService implements IDirectionsService {
                   'Vector route precision',
                 ],
                 stopsCount: index,
+                coordinates: decodedCoords,
               };
             });
 
@@ -205,13 +212,19 @@ class DirectionsService implements IDirectionsService {
         if (response.ok) {
           const data = await response.json();
           if (data && Array.isArray(data.routes) && data.routes.length > 0) {
+            this.routePolylines.clear();
             const parsedRoutes: RouteOption[] = data.routes.map((route: any, index: number) => {
               const seconds = parseInt((route.duration || '600s').replace('s', ''), 10) || 600;
               const minutes = Math.max(1, Math.round(seconds / 60));
               const distKm = Math.round(((route.distanceMeters || 2000) / 1000) * 10) / 10;
+              const routeId = `route-live-${index + 1}`;
+              const decodedCoords = route.polyline?.encodedPolyline
+                ? decodePolyline(route.polyline.encodedPolyline)
+                : [];
 
-              if (index === 0 && route.polyline?.encodedPolyline) {
-                this.activePolyline = decodePolyline(route.polyline.encodedPolyline);
+              this.routePolylines.set(routeId, decodedCoords);
+              if (index === 0) {
+                this.activePolyline = decodedCoords;
               }
 
               // Extract turn-by-turn instructions from first route
@@ -243,7 +256,7 @@ class DirectionsService implements IDirectionsService {
                   : 'Scenic Corridor';
 
               return {
-                id: `route-live-${index + 1}`,
+                id: routeId,
                 type,
                 title,
                 subtitle: route.description ? `Via ${route.description}` : 'Optimal via current traffic',
@@ -256,6 +269,7 @@ class DirectionsService implements IDirectionsService {
                   'Turn-by-turn guidance available',
                 ],
                 stopsCount: index,
+                coordinates: decodedCoords,
               };
             });
 
@@ -271,24 +285,39 @@ class DirectionsService implements IDirectionsService {
     this.lastOrigin = originCoords;
     this.lastDestination = destCoords;
     this.routePolylines.clear();
-    const mockRoutes = [...MOCK_ROUTE_OPTIONS];
-    mockRoutes.forEach((route, index) => {
-      this.routePolylines.set(route.id, generateFallbackPolyline(originCoords, destCoords, index));
+    const resultRoutes: RouteOption[] = MOCK_ROUTE_OPTIONS.map((route, index) => {
+      const fallbackCoords = generateFallbackPolyline(originCoords, destCoords, index);
+      this.routePolylines.set(route.id, fallbackCoords);
+      if (index === 0) {
+        this.activePolyline = fallbackCoords;
+      }
+      return {
+        ...route,
+        coordinates: fallbackCoords,
+      };
     });
-    // Set the first route's polyline as default active polyline
-    this.activePolyline = this.routePolylines.get(mockRoutes[0].id) ?? [];
-    return mockRoutes;
+
+    return resultRoutes;
   }
 
   /**
    * Switches the active polyline to the given route variant.
    * Call this when the user selects a different route card.
    */
-  setActiveRouteById(routeId: string): void {
+  setActiveRouteById(routeId: string): Coordinates[] {
     const poly = this.routePolylines.get(routeId);
     if (poly && poly.length > 0) {
       this.activePolyline = poly;
+      return [...poly];
     }
+    return [...this.activePolyline];
+  }
+
+  /**
+   * Returns polyline for a specific route variant if available.
+   */
+  getRoutePolylineById(routeId: string): Coordinates[] | undefined {
+    return this.routePolylines.get(routeId);
   }
 
   /**

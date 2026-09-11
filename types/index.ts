@@ -47,6 +47,7 @@ export interface RouteOption {
   trafficLevel: 'LOW' | 'MODERATE' | 'HEAVY';
   highlights: string[];
   stopsCount: number;
+  coordinates?: Coordinates[];
 }
 
 export interface JourneyPlaceAhead {

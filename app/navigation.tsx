@@ -44,9 +44,12 @@ export const NavigationScreen: React.FC<NavigationScreenProps> = ({
   const [detourTaken, setDetourTaken] = useState<boolean>(false);
   const [showDetourOffer, setShowDetourOffer] = useState<boolean>(true);
   // Capture the route polyline at navigation start — stays constant during the session
-  const [navRoutePolyline] = useState<import('../types').Coordinates[]>(
-    () => directionsService.getActiveRoutePolyline()
-  );
+  const [navRoutePolyline] = useState<import('../types').Coordinates[]>(() => {
+    if (activeRoute?.coordinates && activeRoute.coordinates.length > 0) {
+      return activeRoute.coordinates;
+    }
+    return directionsService.getActiveRoutePolyline();
+  });
 
   const destName = destinationPlace?.name || 'Gachibowli Tech Campus';
 

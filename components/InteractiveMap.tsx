@@ -233,20 +233,38 @@ function generateLeafletHtml(
       attribution: '${attribution}'
     }).addTo(map);
 
-    // Route Polyline
-    var polylinePoints = [${safePoly}];
-    var polyline = null;
-    if (polylinePoints.length > 1) {
-      polyline = L.polyline(polylinePoints, {
-        color: '#00D2FF',
-        weight: 5,
-        opacity: 0.88,
-        lineCap: 'round',
-        lineJoin: 'round'
-      }).addTo(map);
-      if (!${isNavigationMode}) {
-        try { map.fitBounds(polyline.getBounds(), { padding: [25, 25] }); } catch(e) {}
+    // Global Route Polyline Layer
+    window.routePolyline = null;
+
+    window.setRoutePolyline = function(points, shouldFit) {
+      try {
+        if (window.routePolyline) {
+          try { map.removeLayer(window.routePolyline); } catch(e) {}
+          window.routePolyline = null;
+        }
+        if (points && points.length > 1) {
+          window.routePolyline = L.polyline(points, {
+            color: '#00D2FF',
+            weight: 5,
+            opacity: 0.88,
+            lineCap: 'round',
+            lineJoin: 'round'
+          }).addTo(map);
+          if (shouldFit) {
+            try {
+              map.invalidateSize();
+              map.fitBounds(window.routePolyline.getBounds(), { padding: [30, 30], maxZoom: 17 });
+            } catch(e) {}
+          }
+        }
+      } catch(e) {
+        console.error('setRoutePolyline error:', e);
       }
+    };
+
+    var polylinePoints = [${safePoly}];
+    if (polylinePoints.length > 1) {
+      window.setRoutePolyline(polylinePoints, !${isNavigationMode});
     }
 
     // Vehicle / User Marker
@@ -397,6 +415,15 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     }
   }, [currentCoords.latitude, currentCoords.longitude, headingAngle]);
 
+  // Sync route polyline to Leaflet WebView dynamically without reloading
+  useEffect(() => {
+    if (MAP_ENGINE === 'LEAFLET' && webViewRef.current && activePolyline && activePolyline.length > 1) {
+      const pointsArray = activePolyline.map((p) => [p.latitude, p.longitude]);
+      const js = `if (window.setRoutePolyline) { window.setRoutePolyline(${JSON.stringify(pointsArray)}, ${!isNavigationMode}); } true;`;
+      webViewRef.current.injectJavaScript(js);
+    }
+  }, [activePolyline, isNavigationMode]);
+
   const showMapToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => {
@@ -522,13 +549,9 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       isSatellite
     );
   }, [
-    currentCoords.latitude,
-    currentCoords.longitude,
-    headingAngle,
     destCoords.latitude,
     destCoords.longitude,
     destinationName,
-    activePolyline.length,
     safePlaces.length,
     isNavigationMode,
     isSatellite,
@@ -549,6 +572,13 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
           domStorageEnabled={true}
           onMessage={handleWebViewMessage}
           onError={() => setHasWebViewError(true)}
+          onLoadEnd={() => {
+            if (activePolyline && activePolyline.length > 1 && webViewRef.current) {
+              const pointsArray = activePolyline.map((p) => [p.latitude, p.longitude]);
+              const js = `if (window.setRoutePolyline) { window.setRoutePolyline(${JSON.stringify(pointsArray)}, ${!isNavigationMode}); } true;`;
+              webViewRef.current.injectJavaScript(js);
+            }
+          }}
           androidLayerType="hardware"
         />
       ) : MAP_ENGINE === 'NATIVE' ? (
@@ -584,8 +614,8 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
           )}
           <Marker
             coordinate={{
-              latitude: effectiveUserCoords.latitude,
-              longitude: effectiveUserCoords.longitude,
+              latitude: currentCoords.latitude,
+              longitude: currentCoords.longitude,
             }}
             anchor={{ x: 0.5, y: 0.5 }}
             flat={true}
@@ -711,7 +741,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
                     <Text style={styles.telemetryCellLabel}>YOUR POSITION</Text>
                   </View>
                   <Text style={styles.telemetryCellValue} numberOfLines={1}>
-                    {effectiveUserCoords.latitude.toFixed(4)}°N, {effectiveUserCoords.longitude.toFixed(4)}°E
+                    {currentCoords.latitude.toFixed(4)}°N, {currentCoords.longitude.toFixed(4)}°E
                   </Text>
                 </View>
 
