@@ -35,6 +35,13 @@ export const RouteOptionsScreen: React.FC<RouteOptionsScreenProps> = ({
   const [routePolyline, setRoutePolyline] = useState<Coordinates[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
+  // When user taps a route card: switch directionsService active polyline + update map
+  const handleRouteSelect = (route: RouteOption) => {
+    setSelectedRoute(route);
+    directionsService.setActiveRouteById(route.id);
+    setRoutePolyline(directionsService.getActiveRoutePolyline());
+  };
+
   const destName = destinationPlace?.name || 'Gachibowli Tech Campus';
   const destCategory = destinationPlace?.category || 'Destination';
 
@@ -162,7 +169,7 @@ export const RouteOptionsScreen: React.FC<RouteOptionsScreenProps> = ({
             key={route.id}
             route={route}
             isSelected={selectedRoute.id === route.id}
-            onSelect={(r) => setSelectedRoute(r)}
+            onSelect={handleRouteSelect}
           />
         ))}
 

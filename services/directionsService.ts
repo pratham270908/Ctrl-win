@@ -4,6 +4,43 @@ import { API_CONFIG } from '../constants/apiConfig';
 import { decodePolyline } from '../utils/polylineUtils';
 import { APP_CONFIG } from '../constants/config';
 
+/**
+ * Generates a deterministic multi-point polyline between two coordinates.
+ * Uses a fixed intermediate waypoint offset per routeIndex so different
+ * route variants have visually distinct paths. No randomness — same inputs
+ * always produce the same output.
+ */
+function generateFallbackPolyline(
+  origin: Coordinates,
+  destination: Coordinates,
+  routeIndex: number = 0
+): Coordinates[] {
+  const points: Coordinates[] = [];
+  const steps = 12; // enough resolution for a visible curved path
+
+  // Each route variant curves through a slightly different corridor
+  // offsets are fixed constants, not random
+  const latOffsets = [0.003, -0.002, 0.001];
+  const lngOffsets = [0.004, 0.005, -0.003];
+  const midLatOffset = latOffsets[routeIndex % latOffsets.length];
+  const midLngOffset = lngOffsets[routeIndex % lngOffsets.length];
+
+  // Quadratic bezier curve: origin → midpoint → destination
+  const midLat = (origin.latitude + destination.latitude) / 2 + midLatOffset;
+  const midLng = (origin.longitude + destination.longitude) / 2 + midLngOffset;
+
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const oneMinusT = 1 - t;
+    // Quadratic bezier formula
+    const lat = oneMinusT * oneMinusT * origin.latitude + 2 * oneMinusT * t * midLat + t * t * destination.latitude;
+    const lng = oneMinusT * oneMinusT * origin.longitude + 2 * oneMinusT * t * midLng + t * t * destination.longitude;
+    points.push({ latitude: lat, longitude: lng });
+  }
+
+  return points;
+}
+
 export interface TurnInstruction {
   id: string;
   instruction: string;
@@ -38,6 +75,11 @@ function getManeuverIcon(maneuver?: string): string {
 class DirectionsService implements IDirectionsService {
   private activePolyline: Coordinates[] = [];
   private liveInstructions: TurnInstruction[] = [];
+  // Stores polylines keyed by route ID so variant switching updates the displayed path
+  private routePolylines: Map<string, Coordinates[]> = new Map();
+  // Last origin/destination used for fallback generation
+  private lastOrigin: Coordinates | null = null;
+  private lastDestination: Coordinates | null = null;
 
   /**
    * Retrieves available route options for destination.
@@ -225,8 +267,28 @@ class DirectionsService implements IDirectionsService {
       }
     }
 
-    // Default prototype fallback
-    return [...MOCK_ROUTE_OPTIONS];
+    // Default prototype fallback — generate deterministic polylines per variant
+    this.lastOrigin = originCoords;
+    this.lastDestination = destCoords;
+    this.routePolylines.clear();
+    const mockRoutes = [...MOCK_ROUTE_OPTIONS];
+    mockRoutes.forEach((route, index) => {
+      this.routePolylines.set(route.id, generateFallbackPolyline(originCoords, destCoords, index));
+    });
+    // Set the first route's polyline as default active polyline
+    this.activePolyline = this.routePolylines.get(mockRoutes[0].id) ?? [];
+    return mockRoutes;
+  }
+
+  /**
+   * Switches the active polyline to the given route variant.
+   * Call this when the user selects a different route card.
+   */
+  setActiveRouteById(routeId: string): void {
+    const poly = this.routePolylines.get(routeId);
+    if (poly && poly.length > 0) {
+      this.activePolyline = poly;
+    }
   }
 
   /**
@@ -275,7 +337,7 @@ class DirectionsService implements IDirectionsService {
    * Returns decoded coordinates along active route polyline
    */
   getActiveRoutePolyline(): Coordinates[] {
-    return this.activePolyline;
+    return [...this.activePolyline];
   }
 
   /**

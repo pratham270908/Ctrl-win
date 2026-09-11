@@ -43,11 +43,10 @@ export const NavigationScreen: React.FC<NavigationScreenProps> = ({
   const [routePlaces, setRoutePlaces] = useState<Place[]>([]);
   const [detourTaken, setDetourTaken] = useState<boolean>(false);
   const [showDetourOffer, setShowDetourOffer] = useState<boolean>(true);
-  // Capture the real user origin at mount time for consistent simulation
-  const [simulationOrigin] = useState<{ latitude: number; longitude: number }>(() => {
-    const coords = locationService.getCoordinates();
-    return { latitude: coords.latitude, longitude: coords.longitude };
-  });
+  // Capture the route polyline at navigation start — stays constant during the session
+  const [navRoutePolyline] = useState<import('../types').Coordinates[]>(
+    () => directionsService.getActiveRoutePolyline()
+  );
 
   const destName = destinationPlace?.name || 'Gachibowli Tech Campus';
 
@@ -64,7 +63,7 @@ export const NavigationScreen: React.FC<NavigationScreenProps> = ({
       .then(setRoutePlaces);
   }, [destinationPlace, activeRoute]);
 
-  // Smooth developmental simulation movement loop
+  // Progress simulation loop — updates UI state only, NEVER moves GPS coordinates
   useEffect(() => {
     if (!isSimulating) return;
 
@@ -92,7 +91,7 @@ export const NavigationScreen: React.FC<NavigationScreenProps> = ({
       const stepIdx = Math.min(stepCount - 1, Math.floor((next / 100) * stepCount));
       setCurrentStepIndex(stepIdx);
 
-      // Realistic heading angles along route corridor
+      // Realistic heading angles along route corridor (UI display only)
       let heading = 45;
       if (next < 25) heading = 45;
       else if (next < 55) heading = 65;
@@ -100,28 +99,18 @@ export const NavigationScreen: React.FC<NavigationScreenProps> = ({
       else heading = 25;
       setCurrentHeading(heading);
 
-      // Dynamic speed variations
+      // Dynamic speed variations (UI display only)
       const speeds = [38, 45, 52, 48, 56, 42];
       const spd = speeds[Math.floor(next / 18) % speeds.length];
       setCurrentSpeed(spd);
 
-      // Update locationService coordinates for real-time consistency
-      const originLat = simulationOrigin.latitude;
-      const originLng = simulationOrigin.longitude;
-      const destLat = destinationPlace?.coordinates.latitude ?? 17.4435;
-      const destLng = destinationPlace?.coordinates.longitude ?? 78.3772;
-      const frac = next / 100;
-
-      locationService.updateSimulatedLocation({
-        latitude: originLat + (destLat - originLat) * frac,
-        longitude: originLng + (destLng - originLng) * frac,
-        heading: heading,
-        speedKmh: spd,
-      });
+      // NOTE: User geographic position is NOT updated here.
+      // Current location is driven exclusively by real GPS updates
+      // (or stays at the default prototype location when GPS is unavailable).
     }, 600);
 
     return () => clearInterval(interval);
-  }, [isSimulating, instructions, activeRoute, destinationPlace, destName, onEndNavigation, simulationOrigin]);
+  }, [isSimulating, instructions, destName, onEndNavigation]);
 
   const currentInstruction = instructions[currentStepIndex] || {
     instruction: 'Continue straight',
@@ -314,10 +303,9 @@ export const NavigationScreen: React.FC<NavigationScreenProps> = ({
           selectedPlace={destinationPlace}
           destinationName={destName}
           destinationCoordinates={destinationPlace?.coordinates}
-          routeCoordinates={directionsService.getActiveRoutePolyline()}
+          routeCoordinates={navRoutePolyline}
           isNavigationMode={true}
           onRecenter={handleRecenter}
-          userProgress={progressPercent / 100}
           userHeading={currentHeading}
           showSimulationBadge={true}
         />

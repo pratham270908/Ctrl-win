@@ -383,18 +383,6 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       longitude: APP_CONFIG.defaultDestination.longitude,
     };
 
-  // Calculate current vehicle location (advancing along polyline if in navigation mode)
-  let effectiveUserCoords: Coordinates = currentCoords;
-  if (isNavigationMode && activePolyline.length > 1 && userProgress > 0) {
-    const totalPoints = activePolyline.length;
-    const clampedProgress = Math.max(0, Math.min(1, userProgress));
-    const targetIdx = Math.min(
-      totalPoints - 1,
-      Math.floor(clampedProgress * (totalPoints - 1))
-    );
-    effectiveUserCoords = activePolyline[targetIdx] || currentCoords;
-  }
-
   const headingAngle = userHeading ?? 45;
   const isCompact = height <= 220;
   const isTraffic = mapLayer === 'TRAFFIC';
@@ -404,10 +392,10 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   // Sync user position to Leaflet WebView dynamically without reloading
   useEffect(() => {
     if (MAP_ENGINE === 'LEAFLET' && webViewRef.current) {
-      const js = `if (window.updateUserPos) { window.updateUserPos(${effectiveUserCoords.latitude}, ${effectiveUserCoords.longitude}, ${headingAngle}); } true;`;
+      const js = `if (window.updateUserPos) { window.updateUserPos(${currentCoords.latitude}, ${currentCoords.longitude}, ${headingAngle}); } true;`;
       webViewRef.current.injectJavaScript(js);
     }
-  }, [effectiveUserCoords.latitude, effectiveUserCoords.longitude, headingAngle]);
+  }, [currentCoords.latitude, currentCoords.longitude, headingAngle]);
 
   const showMapToast = (msg: string) => {
     setToastMessage(msg);
@@ -426,8 +414,8 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
   const handleRecenter = () => {
     const target: Region = {
-      latitude: effectiveUserCoords.latitude,
-      longitude: effectiveUserCoords.longitude,
+      latitude: currentCoords.latitude,
+      longitude: currentCoords.longitude,
       latitudeDelta: 0.02,
       longitudeDelta: 0.02,
     };
@@ -435,7 +423,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
     if (MAP_ENGINE === 'LEAFLET' && webViewRef.current) {
       webViewRef.current.injectJavaScript(
-        `if (window.setMapView) { window.setMapView(${effectiveUserCoords.latitude}, ${effectiveUserCoords.longitude}, 16); } true;`
+        `if (window.setMapView) { window.setMapView(${currentCoords.latitude}, ${currentCoords.longitude}, 16); } true;`
       );
     } else if (MAP_ENGINE === 'NATIVE') {
       mapRef.current?.animateToRegion(target, 600);
@@ -523,8 +511,8 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   // Generate Leaflet HTML with user props
   const leafletHtml = useMemo(() => {
     return generateLeafletHtml(
-      effectiveUserCoords,
-      effectiveUserCoords,
+      currentCoords,
+      currentCoords,
       headingAngle,
       destCoords,
       destinationName,
@@ -534,6 +522,9 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       isSatellite
     );
   }, [
+    currentCoords.latitude,
+    currentCoords.longitude,
+    headingAngle,
     destCoords.latitude,
     destCoords.longitude,
     destinationName,
