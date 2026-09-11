@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,291 +9,541 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
+  Dimensions,
+  Animated,
+  ImageBackground,
+  StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../store/AuthContext';
-import { COLORS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
+
+const { width: W, height: H } = Dimensions.get('window');
+
+type AuthMode = 'LOGIN' | 'SIGN_UP' | 'FORGOT_PASSWORD';
 
 interface LoginScreenProps {
   onSuccess: () => void;
 }
 
+// ─── Shared Glass Container ────────────────────────────────────────────────
+const GlassCard: React.FC<{ children: React.ReactNode; style?: any }> = ({
+  children,
+  style,
+}) => <View style={[styles.glassCard, style]}>{children}</View>;
+
+// ─── Styled Text Input Row ─────────────────────────────────────────────────
+interface FieldProps {
+  icon: string;
+  placeholder: string;
+  value: string;
+  onChangeText: (v: string) => void;
+  secureTextEntry?: boolean;
+  keyboardType?: any;
+  autoCapitalize?: any;
+  autoCorrect?: boolean;
+  showToggle?: boolean;
+  toggleVisible?: boolean;
+  onToggle?: () => void;
+  focused: boolean;
+  onFocus: () => void;
+  onBlur: () => void;
+}
+
+const Field: React.FC<FieldProps> = ({
+  icon,
+  placeholder,
+  value,
+  onChangeText,
+  secureTextEntry,
+  keyboardType = 'default',
+  autoCapitalize = 'none',
+  autoCorrect = false,
+  showToggle,
+  toggleVisible,
+  onToggle,
+  focused,
+  onFocus,
+  onBlur,
+}) => (
+  <View
+    style={[
+      styles.fieldRow,
+      focused && styles.fieldRowFocused,
+    ]}
+  >
+    <Ionicons
+      name={icon as any}
+      size={18}
+      color={focused ? '#38BDF8' : '#94A3B8'}
+      style={styles.fieldIcon}
+    />
+    <TextInput
+      style={styles.fieldInput}
+      placeholder={placeholder}
+      placeholderTextColor="rgba(148,163,184,0.6)"
+      value={value}
+      onChangeText={onChangeText}
+      secureTextEntry={secureTextEntry}
+      keyboardType={keyboardType}
+      autoCapitalize={autoCapitalize}
+      autoCorrect={autoCorrect}
+      onFocus={onFocus}
+      onBlur={onBlur}
+    />
+    {showToggle && (
+      <TouchableOpacity
+        onPress={onToggle}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        style={styles.eyeBtn}
+      >
+        <Ionicons
+          name={toggleVisible ? 'eye-off-outline' : 'eye-outline'}
+          size={18}
+          color="#94A3B8"
+        />
+      </TouchableOpacity>
+    )}
+  </View>
+);
+
+// ─── Blue Gradient Action Button ───────────────────────────────────────────
+interface ActionBtnProps {
+  label: string;
+  loading?: boolean;
+  onPress: () => void;
+  icon?: string;
+}
+
+const ActionButton: React.FC<ActionBtnProps> = ({ label, loading, onPress, icon }) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const onPressIn = () =>
+    Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: true, speed: 50 }).start();
+  const onPressOut = () =>
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 50 }).start();
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      activeOpacity={1}
+      disabled={loading}
+    >
+      <Animated.View style={[styles.actionBtn, { transform: [{ scale: scaleAnim }] }]}>
+        {/* Blue gradient layers */}
+        <View style={styles.actionBtnGradientBase} />
+        <View style={styles.actionBtnGradientAccent} />
+        {/* Content */}
+        <View style={styles.actionBtnContent}>
+          {loading ? (
+            <ActivityIndicator color="#FFFFFF" size="small" />
+          ) : (
+            <>
+              <Text style={styles.actionBtnText}>{label}</Text>
+              {icon && (
+                <Ionicons name={icon as any} size={18} color="#FFFFFF" style={{ marginLeft: 6 }} />
+              )}
+            </>
+          )}
+        </View>
+      </Animated.View>
+    </TouchableOpacity>
+  );
+};
+
+// ─── Social Login Button ───────────────────────────────────────────────────
+const SocialBtn: React.FC<{
+  provider: 'google' | 'apple';
+  onPress: () => void;
+}> = ({ provider, onPress }) => (
+  <TouchableOpacity style={styles.socialBtn} onPress={onPress} activeOpacity={0.8}>
+    <View style={styles.socialBtnInner}>
+      {provider === 'google' ? (
+        <View style={styles.googleIconWrap}>
+          {/* Google G icon using coloured text segments */}
+          <Text style={styles.googleG}>G</Text>
+        </View>
+      ) : (
+        <Ionicons name="logo-apple" size={20} color="#FFFFFF" />
+      )}
+      <Text style={styles.socialBtnText}>
+        Continue with {provider === 'google' ? 'Google' : 'Apple'}
+      </Text>
+    </View>
+  </TouchableOpacity>
+);
+
+// ─── Divider with OR ──────────────────────────────────────────────────────
+const OrDivider = () => (
+  <View style={styles.orRow}>
+    <View style={styles.orLine} />
+    <Text style={styles.orText}>OR</Text>
+    <View style={styles.orLine} />
+  </View>
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ═══════════════════════════════════════════════════════════════════════════
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
-  const { login, loginAsGuest, isLoading } = useAuth();
+  const { login, register, loginAsGuest, isLoading } = useAuth();
 
-  const [phone, setPhone] = useState<string>('+91 98765 43210');
-  const [password, setPassword] = useState<string>('journey2026');
-  const [showPassword, setShowPassword] = useState<boolean>(false);
-  const [rememberMe, setRememberMe] = useState<boolean>(true);
-  const [errorMessage, setErrorMessage] = useState<string>('');
-  const [focusedField, setFocusedField] = useState<'phone' | 'password' | null>(null);
+  const [authMode, setAuthMode] = useState<AuthMode>('LOGIN');
 
+  // Fields
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('explorer@specfinder.app');
+  const [password, setPassword] = useState('specfinder2026');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [resetEmail, setResetEmail] = useState('');
+
+  // UI states
+  const [showPass, setShowPass] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
+  const [error, setError] = useState('');
+  const [resetSuccess, setResetSuccess] = useState('');
+  const [focused, setFocused] = useState<string | null>(null);
+
+  // Entry animations
+  const bgFade = useRef(new Animated.Value(0)).current;
+  const cardSlide = useRef(new Animated.Value(30)).current;
+  const cardFade = useRef(new Animated.Value(0)).current;
+  const logoScale = useRef(new Animated.Value(0.88)).current;
+
+  useEffect(() => {
+    setError('');
+    setResetSuccess('');
+    Animated.parallel([
+      Animated.timing(bgFade, { toValue: 1, duration: 700, useNativeDriver: true }),
+      Animated.timing(cardFade, { toValue: 1, duration: 600, delay: 200, useNativeDriver: true }),
+      Animated.timing(cardSlide, { toValue: 0, duration: 600, delay: 200, useNativeDriver: true }),
+      Animated.spring(logoScale, { toValue: 1, friction: 6, tension: 50, useNativeDriver: true }),
+    ]).start();
+  }, [authMode]);
+
+  const switchMode = (mode: AuthMode) => {
+    // Briefly fade out card then switch
+    Animated.parallel([
+      Animated.timing(cardFade, { toValue: 0, duration: 180, useNativeDriver: true }),
+      Animated.timing(cardSlide, { toValue: 20, duration: 180, useNativeDriver: true }),
+    ]).start(() => {
+      setError('');
+      setResetSuccess('');
+      setAuthMode(mode);
+      cardSlide.setValue(30);
+    });
+  };
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
   const handleLogin = async () => {
-    setErrorMessage('');
-    const trimmedPhone = phone.trim();
-    const trimmedPassword = password.trim();
-
-    if (!trimmedPhone || !trimmedPassword) {
-      setErrorMessage('Please enter both your phone number and password.');
+    setError('');
+    if (!email.trim() || !password.trim()) {
+      setError('Please enter your email and password.');
       return;
     }
-
     try {
-      await login(trimmedPhone, trimmedPassword);
+      await login(email.trim(), password.trim());
       onSuccess();
     } catch (e: any) {
-      setErrorMessage(e?.message || 'Authentication error. Please verify your credentials.');
+      setError(e?.message || 'Sign in failed. Please check your credentials.');
+    }
+  };
+
+  const handleSignUp = async () => {
+    setError('');
+    if (!fullName.trim() || !email.trim() || !password.trim()) {
+      setError('Please fill in all required fields.');
+      return;
+    }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+    try {
+      await register(fullName.trim(), email.trim(), password.trim());
+      onSuccess();
+    } catch (e: any) {
+      setError(e?.message || 'Registration failed. Please try again.');
     }
   };
 
   const handleForgotPassword = () => {
-    Alert.alert(
-      'Forgot Password',
-      'To reset your password, please contact your operations supervisor or system dispatch administrator.',
-      [{ text: 'Dismiss', style: 'cancel' }]
-    );
+    setError('');
+    const target = (resetEmail || email).trim();
+    if (!target) {
+      setError('Please enter your email address.');
+      return;
+    }
+    setResetSuccess(`A reset link has been sent to ${target}. Check your inbox.`);
   };
 
-  const handleContactAdmin = () => {
-    Alert.alert(
-      'Account Registration',
-      'New user accounts are provisioned by your fleet administrator. Please contact operations@ctrlwin.app or reach out to internal dispatch.',
-      [{ text: 'OK', style: 'default' }]
-    );
-  };
-
-  const handleGuest = async () => {
+  const handleSocial = async (provider: 'google' | 'apple') => {
     try {
-      await loginAsGuest();
+      await login(`${provider}.user@specfinder.app`, 'socialAuth2026');
       onSuccess();
     } catch {
       onSuccess();
     }
   };
 
+  const handleGuest = async () => {
+    try { await loginAsGuest(); onSuccess(); } catch { onSuccess(); }
+  };
+
+  const f = (name: string) => ({
+    focused: focused === name,
+    onFocus: () => setFocused(name),
+    onBlur: () => setFocused(null),
+  });
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <View style={styles.container}>
-      {/* 1. Full-Screen Dark City/Map Background with Grid, Corridors, Vehicles & HUD */}
-      <View style={styles.mapBackground} pointerEvents="none">
-        {/* Subtle grid pattern */}
-        <View style={styles.gridLineHorizontal1} />
-        <View style={styles.gridLineHorizontal2} />
-        <View style={styles.gridLineHorizontal3} />
-        <View style={styles.gridLineVertical1} />
-        <View style={styles.gridLineVertical2} />
-        <View style={styles.gridLineVertical3} />
+    <View style={styles.root}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-        {/* Ambient Road Corridors */}
-        <View style={styles.corridorPrimary} />
-        <View style={styles.corridorSecondary} />
-        <View style={styles.corridorHighway} />
-        <View style={styles.corridorHighwayGlow} />
+      {/* ── Futuristic City Background ── */}
+      <Animated.View style={[styles.bgWrap, { opacity: bgFade }]}>
+        <ImageBackground
+          source={require('../assets/specfinder_city_bg.jpg')}
+          style={styles.bg}
+          resizeMode="cover"
+        >
+          {/* Gradient overlays for readability */}
+          <View style={styles.bgOverlayTop} />
+          <View style={styles.bgOverlayBottom} />
+          <View style={styles.bgOverlayMid} />
+        </ImageBackground>
+      </Animated.View>
 
-        {/* Dynamic Route Polyline */}
-        <View style={styles.routePolyline} />
-
-        {/* Navigation / Compass HUD Rings */}
-        <View style={styles.hudRingOuter}>
-          <View style={styles.hudRingMiddle}>
-            <View style={styles.hudRingInner} />
-          </View>
-        </View>
-        <View style={styles.hudCrosshairH} />
-        <View style={styles.hudCrosshairV} />
-
-        {/* Vehicle Telemetry Pulse Markers */}
-        <View style={styles.vehicleMarker1}>
-          <View style={styles.vehiclePulseRing1} />
-          <View style={styles.vehicleDot1}>
-            <Ionicons name="navigate" size={10} color="#050811" style={{ transform: [{ rotate: '45deg' }] }} />
-          </View>
-          <View style={styles.vehicleTag1}>
-            <Text style={styles.vehicleTagText}>VEHICLE #04 • 42 km/h</Text>
-          </View>
-        </View>
-
-        <View style={styles.vehicleMarker2}>
-          <View style={styles.vehiclePulseRing2} />
-          <View style={styles.vehicleDot2} />
-          <View style={styles.vehicleTag2}>
-            <Text style={styles.vehicleTagText2}>FLEET NODE #12</Text>
-          </View>
-        </View>
-
-        <View style={styles.vehicleMarker3}>
-          <View style={styles.vehiclePulseRing3} />
-          <View style={styles.vehicleDot3} />
-        </View>
-
-        {/* Ambient Glows */}
-        <View style={styles.ambientGlowTop} />
-        <View style={styles.ambientGlowBottom} />
-      </View>
-
-      {/* 2. Interactive Centered Login Flow */}
+      {/* ── Foreground Content ── */}
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom', 'left', 'right']}>
         <KeyboardAvoidingView
-          style={styles.keyboardAvoid}
+          style={styles.flex}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <ScrollView
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={styles.scroll}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {/* Centered Glassmorphism Login Card */}
-            <View style={styles.loginCard}>
-              {/* Brand Logo Header: Lime '+' Mark & Ctrl+Win */}
-              <View style={styles.brandRow}>
-                <View style={styles.logoBadge}>
-                  <Text style={styles.logoPlusText}>+</Text>
-                </View>
-                <Text style={styles.brandTitle}>
-                  Ctrl<Text style={styles.brandPlus}>+</Text>Win
-                </Text>
+            {/* ── Logo / Brand mark ── */}
+            <Animated.View
+              style={[
+                styles.logoWrap,
+                { opacity: cardFade, transform: [{ scale: logoScale }] },
+              ]}
+            >
+              <View style={styles.logoBg}>
+                <Ionicons name="compass" size={30} color="#38BDF8" />
               </View>
-
-              {/* Title & Subtitle */}
-              <Text style={styles.welcomeTitle}>Welcome Back</Text>
-              <Text style={styles.welcomeSubtitle}>
-                Sign in to your account to continue to the operations dashboard.
+              <Text style={styles.logoText}>
+                Spec<Text style={styles.logoAccent}>Finder</Text>
               </Text>
+            </Animated.View>
 
-              {/* Error Banner if invalid */}
-              {errorMessage ? (
-                <View style={styles.errorBanner}>
-                  <Ionicons name="alert-circle" size={16} color={COLORS.danger} />
-                  <Text style={styles.errorText}>{errorMessage}</Text>
-                </View>
-              ) : null}
+            {/* ── Auth Card ── */}
+            <Animated.View
+              style={[
+                styles.cardWrap,
+                {
+                  opacity: cardFade,
+                  transform: [{ translateY: cardSlide }],
+                },
+              ]}
+            >
+              {/* ════════════════════════════════════════ */}
+              {/* LOGIN MODE */}
+              {/* ════════════════════════════════════════ */}
+              {authMode === 'LOGIN' && (
+                <GlassCard>
+                  <Text style={styles.heading}>Welcome Back</Text>
+                  <Text style={styles.subheading}>
+                    Sign in to continue your journey{'\n'}with SpecFinder
+                  </Text>
 
-              {/* Field 1: Phone Number */}
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>Phone Number</Text>
-                <View
-                  style={[
-                    styles.inputContainer,
-                    focusedField === 'phone' && styles.inputContainerFocused,
-                  ]}
-                >
-                  <Ionicons
-                    name="call-outline"
-                    size={18}
-                    color={focusedField === 'phone' ? '#A3E635' : '#64748B'}
-                    style={styles.inputIcon}
-                  />
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="Enter your phone number"
-                    placeholderTextColor="#475569"
-                    value={phone}
-                    onChangeText={setPhone}
-                    keyboardType="phone-pad"
-                    autoCapitalize="none"
-                    onFocus={() => setFocusedField('phone')}
-                    onBlur={() => setFocusedField(null)}
-                  />
-                </View>
-              </View>
+                  {error ? <ErrorBanner message={error} /> : null}
 
-              {/* Field 2: Password */}
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>Password</Text>
-                <View
-                  style={[
-                    styles.inputContainer,
-                    focusedField === 'password' && styles.inputContainerFocused,
-                  ]}
-                >
-                  <Ionicons
-                    name="lock-closed-outline"
-                    size={18}
-                    color={focusedField === 'password' ? '#A3E635' : '#64748B'}
-                    style={styles.inputIcon}
+                  <Field
+                    icon="mail-outline"
+                    placeholder="Email address"
+                    value={email}
+                    onChangeText={setEmail}
+                    keyboardType="email-address"
+                    {...f('email')}
                   />
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="Enter your password"
-                    placeholderTextColor="#475569"
+                  <Field
+                    icon="lock-closed-outline"
+                    placeholder="Password"
                     value={password}
                     onChangeText={setPassword}
-                    secureTextEntry={!showPassword}
-                    onFocus={() => setFocusedField('password')}
-                    onBlur={() => setFocusedField(null)}
+                    secureTextEntry={!showPass}
+                    showToggle
+                    toggleVisible={showPass}
+                    onToggle={() => setShowPass(!showPass)}
+                    {...f('pass')}
                   />
-                  <TouchableOpacity
-                    onPress={() => setShowPassword(!showPassword)}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    style={styles.eyeBtn}
-                    accessibilityLabel="Toggle password visibility"
-                  >
-                    <Ionicons
-                      name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                      size={18}
-                      color="#94A3B8"
-                    />
-                  </TouchableOpacity>
-                </View>
-              </View>
 
-              {/* Remember Me & Forgot Password Row */}
-              <View style={styles.optionsRow}>
-                <TouchableOpacity
-                  style={styles.rememberMeRow}
-                  onPress={() => setRememberMe(!rememberMe)}
-                  activeOpacity={0.8}
-                >
-                  <View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
-                    {rememberMe && <Ionicons name="checkmark" size={13} color="#050811" />}
+                  {/* Remember Me + Forgot */}
+                  <View style={styles.optRow}>
+                    <TouchableOpacity
+                      style={styles.rememberRow}
+                      onPress={() => setRememberMe(!rememberMe)}
+                      activeOpacity={0.8}
+                    >
+                      <View style={[styles.cb, rememberMe && styles.cbChecked]}>
+                        {rememberMe && <Ionicons name="checkmark" size={11} color="#030E1A" />}
+                      </View>
+                      <Text style={styles.rememberText}>Remember me</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => switchMode('FORGOT_PASSWORD')}>
+                      <Text style={styles.forgotText}>Forgot password?</Text>
+                    </TouchableOpacity>
                   </View>
-                  <Text style={styles.rememberMeText}>Remember me</Text>
-                </TouchableOpacity>
 
-                <TouchableOpacity onPress={handleForgotPassword} activeOpacity={0.75}>
-                  <Text style={styles.forgotPasswordText}>Forgot password?</Text>
-                </TouchableOpacity>
-              </View>
+                  <ActionButton label="Log In" loading={isLoading} onPress={handleLogin} icon="arrow-forward" />
 
-              {/* Prominent Lime/Green Login Button: "Login →" */}
-              <TouchableOpacity
-                style={styles.loginButton}
-                onPress={handleLogin}
-                disabled={isLoading}
-                activeOpacity={0.85}
-              >
-                {isLoading ? (
-                  <ActivityIndicator color="#050811" size="small" />
-                ) : (
-                  <>
-                    <Text style={styles.loginButtonText}>Login</Text>
-                    <Ionicons name="arrow-forward" size={18} color="#050811" style={styles.arrowIcon} />
-                  </>
-                )}
-              </TouchableOpacity>
+                  <OrDivider />
+                  <SocialBtn provider="google" onPress={() => handleSocial('google')} />
+                  <SocialBtn provider="apple" onPress={() => handleSocial('apple')} />
 
-              {/* Bottom Notice: Don't have an account? Contact your administrator */}
-              <View style={styles.footerWrap}>
-                <Text style={styles.footerText}>
-                  Don't have an account?{' '}
-                  <Text style={styles.footerLink} onPress={handleContactAdmin}>
-                    Contact your administrator
+                  <SwitchRow
+                    text="Don't have an account?"
+                    linkText="Sign Up"
+                    onPress={() => switchMode('SIGN_UP')}
+                  />
+                </GlassCard>
+              )}
+
+              {/* ════════════════════════════════════════ */}
+              {/* SIGN UP MODE */}
+              {/* ════════════════════════════════════════ */}
+              {authMode === 'SIGN_UP' && (
+                <GlassCard>
+                  <Text style={styles.heading}>Create Account</Text>
+                  <Text style={styles.subheading}>Join SpecFinder and start exploring</Text>
+
+                  {error ? <ErrorBanner message={error} /> : null}
+
+                  <Field
+                    icon="person-outline"
+                    placeholder="Full name"
+                    value={fullName}
+                    onChangeText={setFullName}
+                    autoCapitalize="words"
+                    {...f('name')}
+                  />
+                  <Field
+                    icon="mail-outline"
+                    placeholder="Email address"
+                    value={email}
+                    onChangeText={setEmail}
+                    keyboardType="email-address"
+                    {...f('email2')}
+                  />
+                  <Field
+                    icon="lock-closed-outline"
+                    placeholder="Password"
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry={!showPass}
+                    showToggle
+                    toggleVisible={showPass}
+                    onToggle={() => setShowPass(!showPass)}
+                    {...f('pass2')}
+                  />
+                  <Field
+                    icon="shield-checkmark-outline"
+                    placeholder="Confirm password"
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    secureTextEntry={!showConfirm}
+                    showToggle
+                    toggleVisible={showConfirm}
+                    onToggle={() => setShowConfirm(!showConfirm)}
+                    {...f('confirm')}
+                  />
+
+                  <Text style={styles.termsText}>
+                    By signing up you agree to our{' '}
+                    <Text style={styles.termsLink}>Terms of Service</Text> and{' '}
+                    <Text style={styles.termsLink}>Privacy Policy</Text>.
                   </Text>
-                </Text>
-              </View>
 
-              {/* Quick Guest Explorer Access */}
+                  <ActionButton label="Sign Up" loading={isLoading} onPress={handleSignUp} icon="arrow-forward" />
+
+                  <OrDivider />
+                  <SocialBtn provider="google" onPress={() => handleSocial('google')} />
+                  <SocialBtn provider="apple" onPress={() => handleSocial('apple')} />
+
+                  <SwitchRow
+                    text="Already have an account?"
+                    linkText="Log In"
+                    onPress={() => switchMode('LOGIN')}
+                  />
+                </GlassCard>
+              )}
+
+              {/* ════════════════════════════════════════ */}
+              {/* FORGOT PASSWORD MODE */}
+              {/* ════════════════════════════════════════ */}
+              {authMode === 'FORGOT_PASSWORD' && (
+                <GlassCard>
+                  {/* Icon */}
+                  <View style={styles.forgotIconWrap}>
+                    <Ionicons name="key-outline" size={32} color="#38BDF8" />
+                  </View>
+                  <Text style={styles.heading}>Forgot Password?</Text>
+                  <Text style={styles.subheading}>
+                    Enter your email address and we'll send you a link to reset your password.
+                  </Text>
+
+                  {error ? <ErrorBanner message={error} /> : null}
+                  {resetSuccess ? <SuccessBanner message={resetSuccess} /> : null}
+
+                  <Field
+                    icon="mail-outline"
+                    placeholder="Your email address"
+                    value={resetEmail || email}
+                    onChangeText={setResetEmail}
+                    keyboardType="email-address"
+                    {...f('reset')}
+                  />
+
+                  <ActionButton
+                    label="Send Reset Link"
+                    onPress={handleForgotPassword}
+                    icon="paper-plane-outline"
+                  />
+
+                  <TouchableOpacity
+                    style={styles.backRow}
+                    onPress={() => switchMode('LOGIN')}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="arrow-back" size={16} color="#38BDF8" />
+                    <Text style={styles.backText}>Back to Login</Text>
+                  </TouchableOpacity>
+                </GlassCard>
+              )}
+
+              {/* Guest shortcut */}
               <TouchableOpacity
-                style={styles.guestLink}
+                style={styles.guestBtn}
                 onPress={handleGuest}
                 activeOpacity={0.75}
               >
-                <Text style={styles.guestLinkText}>
-                  Or explore directly as <Text style={styles.guestLinkBold}>Guest Explorer →</Text>
+                <Text style={styles.guestText}>
+                  Continue as{' '}
+                  <Text style={styles.guestAccent}>Guest Explorer →</Text>
                 </Text>
               </TouchableOpacity>
-            </View>
+            </Animated.View>
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -301,460 +551,183 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
   );
 };
 
+// ─── Small helper components ───────────────────────────────────────────────
+const ErrorBanner: React.FC<{ message: string }> = ({ message }) => (
+  <View style={styles.errorBanner}>
+    <Ionicons name="alert-circle" size={15} color="#F87171" />
+    <Text style={styles.errorText}>{message}</Text>
+  </View>
+);
+
+const SuccessBanner: React.FC<{ message: string }> = ({ message }) => (
+  <View style={styles.successBanner}>
+    <Ionicons name="checkmark-circle" size={15} color="#34D399" />
+    <Text style={styles.successText}>{message}</Text>
+  </View>
+);
+
+const SwitchRow: React.FC<{
+  text: string;
+  linkText: string;
+  onPress: () => void;
+}> = ({ text, linkText, onPress }) => (
+  <View style={styles.switchRow}>
+    <Text style={styles.switchText}>{text} </Text>
+    <TouchableOpacity onPress={onPress}>
+      <Text style={styles.switchLink}>{linkText}</Text>
+    </TouchableOpacity>
+  </View>
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STYLES
+// ═══════════════════════════════════════════════════════════════════════════
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#050811',
-    position: 'relative',
+  root: { flex: 1, backgroundColor: '#030E1A' },
+  flex: { flex: 1 },
+
+  // Background
+  bgWrap: { ...(StyleSheet.absoluteFill as any) },
+  bg: { width: '100%', height: '100%' },
+  bgOverlayTop: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0,
+    height: H * 0.4,
+    backgroundColor: 'rgba(3, 14, 26, 0.55)',
   },
-  safeArea: {
-    flex: 1,
+  bgOverlayMid: {
+    position: 'absolute',
+    top: H * 0.2, left: 0, right: 0,
+    height: H * 0.5,
+    backgroundColor: 'rgba(5, 18, 38, 0.35)',
   },
-  keyboardAvoid: {
-    flex: 1,
+  bgOverlayBottom: {
+    position: 'absolute',
+    bottom: 0, left: 0, right: 0,
+    height: H * 0.55,
+    backgroundColor: 'rgba(3, 14, 26, 0.78)',
   },
-  scrollContent: {
+
+  // SafeArea / Scroll
+  safeArea: { flex: 1 },
+  scroll: {
     flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.lg,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 32,
   },
 
-  /* ----------------------------------------------------
-     FULL-SCREEN DARK CITY / MAP BACKGROUND
-  ---------------------------------------------------- */
-  mapBackground: {
-    ...(StyleSheet.absoluteFill as any),
-    backgroundColor: '#050811',
-    overflow: 'hidden',
-  },
-  gridLineHorizontal1: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '22%',
-    height: 1,
-    backgroundColor: 'rgba(148, 163, 184, 0.05)',
-  },
-  gridLineHorizontal2: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '50%',
-    height: 1,
-    backgroundColor: 'rgba(148, 163, 184, 0.06)',
-  },
-  gridLineHorizontal3: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '78%',
-    height: 1,
-    backgroundColor: 'rgba(148, 163, 184, 0.05)',
-  },
-  gridLineVertical1: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: '18%',
-    width: 1,
-    backgroundColor: 'rgba(148, 163, 184, 0.05)',
-  },
-  gridLineVertical2: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: '50%',
-    width: 1,
-    backgroundColor: 'rgba(148, 163, 184, 0.06)',
-  },
-  gridLineVertical3: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: '82%',
-    width: 1,
-    backgroundColor: 'rgba(148, 163, 184, 0.05)',
-  },
-  corridorPrimary: {
-    position: 'absolute',
-    width: '140%',
-    height: 3,
-    backgroundColor: 'rgba(56, 189, 248, 0.12)',
-    top: '35%',
-    left: '-20%',
-    transform: [{ rotate: '-18deg' }],
-  },
-  corridorSecondary: {
-    position: 'absolute',
-    width: '130%',
-    height: 2,
-    backgroundColor: 'rgba(163, 230, 53, 0.1)',
-    top: '65%',
-    left: '-15%',
-    transform: [{ rotate: '25deg' }],
-  },
-  corridorHighway: {
-    position: 'absolute',
-    width: '160%',
-    height: 5,
-    backgroundColor: 'rgba(30, 41, 59, 0.7)',
-    top: '52%',
-    left: '-30%',
-    transform: [{ rotate: '-8deg' }],
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: 'rgba(163, 230, 53, 0.18)',
-  },
-  corridorHighwayGlow: {
-    position: 'absolute',
-    width: '160%',
-    height: 1,
-    backgroundColor: 'rgba(163, 230, 53, 0.35)',
-    top: '52.5%',
-    left: '-30%',
-    transform: [{ rotate: '-8deg' }],
-  },
-  routePolyline: {
-    position: 'absolute',
-    width: '120%',
-    height: 3.5,
-    backgroundColor: '#00D2FF',
-    opacity: 0.28,
-    top: '40%',
-    left: '-10%',
-    transform: [{ rotate: '12deg' }],
-    borderRadius: 2,
-  },
-
-  /* HUD Radar Rings */
-  hudRingOuter: {
-    position: 'absolute',
-    width: 480,
-    height: 480,
-    borderRadius: 240,
-    borderWidth: 1,
-    borderColor: 'rgba(163, 230, 53, 0.07)',
-    top: '50%',
-    left: '50%',
-    marginTop: -240,
-    marginLeft: -240,
+  // Logo
+  logoWrap: {
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  hudRingMiddle: {
-    width: 320,
-    height: 320,
-    borderRadius: 160,
-    borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  hudRingInner: {
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    borderWidth: 1,
-    borderColor: 'rgba(163, 230, 53, 0.1)',
-  },
-  hudCrosshairH: {
-    position: 'absolute',
-    width: 120,
-    height: 1,
-    backgroundColor: 'rgba(163, 230, 53, 0.15)',
-    top: '50%',
-    left: '50%',
-    marginLeft: -60,
-  },
-  hudCrosshairV: {
-    position: 'absolute',
-    width: 1,
-    height: 120,
-    backgroundColor: 'rgba(163, 230, 53, 0.15)',
-    top: '50%',
-    left: '50%',
-    marginTop: -60,
-  },
-
-  /* Vehicle Marker 1 (Active Ahead) */
-  vehicleMarker1: {
-    position: 'absolute',
-    top: '28%',
-    right: '12%',
-    alignItems: 'center',
-  },
-  vehiclePulseRing1: {
-    position: 'absolute',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(163, 230, 53, 0.2)',
-    top: -6,
-  },
-  vehicleDot1: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#A3E635',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    ...SHADOWS.sm,
-  },
-  vehicleTag1: {
-    backgroundColor: 'rgba(15, 23, 42, 0.92)',
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: 'rgba(163, 230, 53, 0.4)',
-    marginTop: 4,
-  },
-  vehicleTagText: {
-    color: '#A3E635',
-    fontSize: 8.5,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-
-  /* Vehicle Marker 2 */
-  vehicleMarker2: {
-    position: 'absolute',
-    bottom: '22%',
-    left: '10%',
-    alignItems: 'center',
-  },
-  vehiclePulseRing2: {
-    position: 'absolute',
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(56, 189, 248, 0.25)',
-    top: -4,
-  },
-  vehicleDot2: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#00D2FF',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  vehicleTag2: {
-    backgroundColor: 'rgba(15, 23, 42, 0.9)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    marginTop: 4,
-  },
-  vehicleTagText2: {
-    color: '#38BDF8',
-    fontSize: 8,
-    fontWeight: '700',
-  },
-
-  /* Vehicle Marker 3 */
-  vehicleMarker3: {
-    position: 'absolute',
-    top: '16%',
-    left: '15%',
-  },
-  vehiclePulseRing3: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: 'rgba(163, 230, 53, 0.3)',
-    position: 'absolute',
-    top: -3,
-    left: -3,
-  },
-  vehicleDot3: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#A3E635',
-  },
-
-  /* Ambient Glows */
-  ambientGlowTop: {
-    position: 'absolute',
-    top: -120,
-    right: -100,
-    width: 320,
-    height: 320,
-    borderRadius: 160,
-    backgroundColor: 'rgba(163, 230, 53, 0.08)',
-  },
-  ambientGlowBottom: {
-    position: 'absolute',
-    bottom: -150,
-    left: -120,
-    width: 380,
-    height: 380,
-    borderRadius: 190,
-    backgroundColor: 'rgba(56, 189, 248, 0.06)',
-  },
-
-  /* ----------------------------------------------------
-     CENTERED GLASSMORPHISM LOGIN CARD
-  ---------------------------------------------------- */
-  loginCard: {
-    width: '100%',
-    maxWidth: 420,
-    backgroundColor: 'rgba(10, 15, 29, 0.88)',
-    borderRadius: 24,
-    paddingHorizontal: 28,
-    paddingTop: 32,
-    paddingBottom: 28,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.7,
-    shadowRadius: 36,
-    elevation: 16,
-    zIndex: 20,
-  },
-
-  /* Brand Header: Logo mark + Ctrl+Win */
-  brandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
     marginBottom: 20,
   },
-  logoBadge: {
-    width: 34,
-    height: 34,
-    borderRadius: 9,
-    backgroundColor: '#1C2E05',
+  logoBg: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
     borderWidth: 1.5,
-    borderColor: '#A3E635',
+    borderColor: 'rgba(56, 189, 248, 0.35)',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#A3E635',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 4,
+    marginBottom: 10,
+    shadowColor: '#38BDF8',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 6,
   },
-  logoPlusText: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: '#A3E635',
-    lineHeight: 25,
-    marginTop: -2,
-  },
-  brandTitle: {
-    fontSize: 24,
+  logoText: {
+    fontSize: 28,
     fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: -0.5,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
   },
-  brandPlus: {
-    color: '#A3E635',
-    fontWeight: '900',
+  logoAccent: { color: '#38BDF8' },
+
+  // Card wrapping area
+  cardWrap: { width: '100%', maxWidth: 420 },
+
+  // Glass Card
+  glassCard: {
+    backgroundColor: 'rgba(5, 18, 38, 0.82)',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.18)',
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.7,
+    shadowRadius: 32,
+    elevation: 16,
   },
 
-  /* Welcome Typography */
-  welcomeTitle: {
-    fontSize: 23,
-    fontWeight: '700',
+  // Typography
+  heading: {
+    fontSize: 26,
+    fontWeight: '800',
     color: '#FFFFFF',
     textAlign: 'center',
-    letterSpacing: -0.3,
+    letterSpacing: -0.4,
+    marginBottom: 6,
   },
-  welcomeSubtitle: {
-    fontSize: 13,
-    color: '#94A3B8',
+  subheading: {
+    fontSize: 13.5,
+    color: 'rgba(148, 163, 184, 0.9)',
     textAlign: 'center',
-    marginTop: 6,
-    marginBottom: 24,
-    lineHeight: 19,
-    paddingHorizontal: 8,
+    lineHeight: 20,
+    marginBottom: 22,
   },
 
-  /* Error Banner */
-  errorBanner: {
+  // Field
+  fieldRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(239, 68, 68, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.35)',
-    borderRadius: RADIUS.md,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    marginBottom: 16,
-  },
-  errorText: {
-    color: '#F87171',
-    fontSize: 12.5,
-    fontWeight: '500',
-    flex: 1,
-  },
-
-  /* Field Groups */
-  fieldGroup: {
-    marginBottom: 18,
-  },
-  fieldLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#E2E8F0',
-    marginBottom: 7,
-    letterSpacing: 0.2,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    backgroundColor: 'rgba(15, 30, 55, 0.7)',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(51, 65, 85, 0.8)',
+    borderColor: 'rgba(56, 189, 248, 0.18)',
     paddingHorizontal: 14,
-    height: 48,
+    height: 50,
+    marginBottom: 14,
   },
-  inputContainerFocused: {
-    borderColor: '#A3E635',
-    backgroundColor: 'rgba(20, 30, 55, 0.95)',
-    shadowColor: '#A3E635',
+  fieldRowFocused: {
+    borderColor: '#38BDF8',
+    backgroundColor: 'rgba(15, 38, 72, 0.85)',
+    shadowColor: '#38BDF8',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.22,
     shadowRadius: 8,
-    elevation: 2,
+    elevation: 3,
   },
-  inputIcon: {
-    marginRight: 10,
-  },
-  textInput: {
+  fieldIcon: { marginRight: 10 },
+  fieldInput: {
     flex: 1,
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 14.5,
     fontWeight: '500',
     paddingVertical: 0,
   },
-  eyeBtn: {
-    padding: 4,
-  },
+  eyeBtn: { padding: 4 },
 
-  /* Options Row: Remember Me & Forgot Password */
-  optionsRow: {
+  // Options row
+  optRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: 20,
     marginTop: 2,
-    marginBottom: 24,
   },
-  rememberMeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  checkbox: {
+  rememberRow: { flexDirection: 'row', alignItems: 'center' },
+  cb: {
     width: 18,
     height: 18,
     borderRadius: 5,
@@ -764,75 +737,169 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkboxChecked: {
-    backgroundColor: '#A3E635',
-    borderColor: '#A3E635',
-  },
-  rememberMeText: {
-    color: '#94A3B8',
-    fontSize: 13,
-    fontWeight: '500',
-    marginLeft: 8,
-  },
-  forgotPasswordText: {
-    color: '#A3E635',
-    fontSize: 13,
-    fontWeight: '600',
-  },
+  cbChecked: { backgroundColor: '#38BDF8', borderColor: '#38BDF8' },
+  rememberText: { color: 'rgba(148,163,184,0.85)', fontSize: 13, marginLeft: 8 },
+  forgotText: { color: '#38BDF8', fontSize: 13, fontWeight: '600' },
 
-  /* Prominent Lime/Green Login Button: "Login →" */
-  loginButton: {
-    backgroundColor: '#A3E635',
-    borderRadius: 12,
-    height: 48,
+  // Action Button
+  actionBtn: {
+    height: 52,
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginBottom: 6,
+    position: 'relative',
+  },
+  actionBtnGradientBase: {
+    ...(StyleSheet.absoluteFill as any),
+    backgroundColor: '#0369A1',
+  },
+  actionBtnGradientAccent: {
+    position: 'absolute',
+    top: 0, left: 0, right: '50%', bottom: 0,
+    backgroundColor: 'rgba(56, 189, 248, 0.3)',
+  },
+  actionBtnContent: {
+    ...(StyleSheet.absoluteFill as any),
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    shadowColor: '#A3E635',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.38,
-    shadowRadius: 14,
-    elevation: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.45)',
+    borderRadius: 14,
   },
-  loginButtonText: {
-    color: '#050811',
-    fontSize: 15.5,
-    fontWeight: '800',
+  actionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
     letterSpacing: 0.2,
   },
-  arrowIcon: {
-    marginTop: 1,
-  },
 
-  /* Bottom Notice: Don't have an account? Contact your administrator */
-  footerWrap: {
-    marginTop: 22,
+  // OR divider
+  orRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    marginVertical: 16,
   },
-  footerText: {
-    color: '#64748B',
-    fontSize: 12.5,
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  footerLink: {
-    color: '#A3E635',
-    fontWeight: '700',
-  },
-
-  /* Guest Shortcut Link */
-  guestLink: {
-    marginTop: 16,
-    paddingVertical: 6,
-    alignItems: 'center',
-  },
-  guestLinkText: {
-    color: '#475569',
+  orLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.08)' },
+  orText: {
+    color: 'rgba(148,163,184,0.6)',
     fontSize: 12,
+    fontWeight: '600',
+    paddingHorizontal: 14,
+    letterSpacing: 1,
   },
-  guestLinkBold: {
-    color: '#38BDF8',
-    fontWeight: '700',
+
+  // Social buttons
+  socialBtn: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    height: 46,
+    marginBottom: 10,
+    overflow: 'hidden',
   },
+  socialBtnInner: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  socialBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  googleIconWrap: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  googleG: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#4285F4',
+    lineHeight: 15,
+  },
+
+  // Switch row (Don't have an account?)
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 18,
+  },
+  switchText: { color: 'rgba(148,163,184,0.8)', fontSize: 13 },
+  switchLink: { color: '#38BDF8', fontSize: 13, fontWeight: '700' },
+
+  // Forgot password icon
+  forgotIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+
+  // Back to login
+  backRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
+    gap: 6,
+  },
+  backText: { color: '#38BDF8', fontSize: 14, fontWeight: '600' },
+
+  // Terms text
+  termsText: {
+    fontSize: 12,
+    color: 'rgba(148,163,184,0.65)',
+    lineHeight: 17,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  termsLink: { color: '#38BDF8', fontWeight: '500' },
+
+  // Banners
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(239,68,68,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.3)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginBottom: 16,
+  },
+  errorText: { color: '#F87171', fontSize: 12.5, fontWeight: '500', flex: 1 },
+  successBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(16,185,129,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(52,211,153,0.3)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginBottom: 16,
+  },
+  successText: { color: '#34D399', fontSize: 12.5, fontWeight: '500', flex: 1 },
+
+  // Guest
+  guestBtn: { alignItems: 'center', paddingVertical: 16 },
+  guestText: { color: 'rgba(148,163,184,0.6)', fontSize: 13 },
+  guestAccent: { color: '#38BDF8', fontWeight: '600' },
 });

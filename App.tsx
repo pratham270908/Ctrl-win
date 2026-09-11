@@ -63,7 +63,7 @@ const MainNavigator: React.FC = () => {
     addRecentRoute,
   } = useApp();
 
-  const [currentScreen, setCurrentScreen] = useState<AppScreen>('TABS');
+  const [currentScreen, setCurrentScreen] = useState<AppScreen>('SPLASH');
   const [currentTab, setCurrentTab] = useState<TabScreen>('home');
   const [searchQuery, setSearchQuery] = useState<string>('Coffee');
 
@@ -74,21 +74,11 @@ const MainNavigator: React.FC = () => {
   };
 
   const handleSplashFinish = () => {
-    if (!user) {
-      setCurrentScreen('LOGIN');
-    } else if (!hasCompletedOnboarding) {
-      setCurrentScreen('ONBOARDING');
-    } else {
-      setCurrentScreen('TABS');
-    }
+    setCurrentScreen('LOGIN');
   };
 
   const handleLoginSuccess = () => {
-    if (!hasCompletedOnboarding) {
-      setCurrentScreen('ONBOARDING');
-    } else {
-      setCurrentScreen('TABS');
-    }
+    setCurrentScreen('TABS');
   };
 
   const handleOnboardingComplete = () => {
