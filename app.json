@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Smart Directional Location Finder",
+    "slug": "smart-directional-location-finder",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0F172A"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.smartdirectional.finder"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0F172A"
+      },
+      "package": "com.smartdirectional.finder"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

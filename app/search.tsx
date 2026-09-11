@@ -1,0 +1,288 @@
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  SafeAreaView,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { SearchBar } from '../components/SearchBar';
+import { CATEGORIES } from '../data/mockCategories';
+import { useApp } from '../store/AppContext';
+import { PlaceCategory } from '../types';
+import { COLORS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
+
+interface SearchScreenProps {
+  onBack: () => void;
+  onSelectQuery: (query: string) => void;
+  onSelectCategory: (category: PlaceCategory) => void;
+}
+
+export const SearchScreen: React.FC<SearchScreenProps> = ({
+  onBack,
+  onSelectQuery,
+  onSelectCategory,
+}) => {
+  const { recentSearches, addRecentSearch, clearRecentSearches } = useApp();
+  const [searchText, setSearchText] = useState<string>('');
+
+  const handleSearchSubmit = async () => {
+    const trimmed = searchText.trim();
+    if (!trimmed) return;
+    await addRecentSearch(trimmed);
+    onSelectQuery(trimmed);
+  };
+
+  const handleRecentTap = (query: string) => {
+    setSearchText(query);
+    onSelectQuery(query);
+  };
+
+  // Dynamic suggestions based on typed input
+  const suggestions = [
+    'Coffee Roasters Ahead',
+    'Shell Petrol & EV Hub',
+    'HDFC 24/7 ATM',
+    'Medicover Emergency Hospital',
+    'Apollo Pharmacy 24 Hours',
+    'Paradise Biryani Takeaway',
+  ].filter((s) => s.toLowerCase().includes(searchText.toLowerCase()));
+
+  return (
+    <SafeAreaView style={styles.container}>
+      {/* Top Search Input Bar with Back Button */}
+      <View style={styles.topBar}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={onBack}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
+        </TouchableOpacity>
+
+        <View style={styles.searchBarWrapper}>
+          <SearchBar
+            value={searchText}
+            onChangeText={setSearchText}
+            onSubmitEditing={handleSearchSubmit}
+            onClear={() => setSearchText('')}
+            placeholder="Search coffee, fuel, ATM ahead..."
+            editable={true}
+            autoFocus={true}
+          />
+        </View>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Dynamic Live Suggestions when typing */}
+        {searchText.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Suggestions Ahead</Text>
+            {suggestions.map((suggestion, index) => (
+              <TouchableOpacity
+                key={index}
+                style={styles.suggestionItem}
+                onPress={() => {
+                  addRecentSearch(suggestion);
+                  onSelectQuery(suggestion);
+                }}
+              >
+                <Ionicons name="search-outline" size={16} color={COLORS.accent} />
+                <Text style={styles.suggestionText}>{suggestion}</Text>
+                <Ionicons name="arrow-forward" size={14} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Recent Searches */}
+        {recentSearches.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>Recent Searches</Text>
+              <TouchableOpacity onPress={clearRecentSearches}>
+                <Text style={styles.clearText}>Clear</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.recentChipsWrap}>
+              {recentSearches.map((item, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.recentChip}
+                  onPress={() => handleRecentTap(item)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="time-outline" size={14} color={COLORS.textSecondary} />
+                  <Text style={styles.recentChipText}>{item}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Popular Categories */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Popular Categories</Text>
+          <Text style={styles.sectionSubtitle}>Quick filter places along your path</Text>
+
+          <View style={styles.categoriesGrid}>
+            {CATEGORIES.map((cat) => (
+              <TouchableOpacity
+                key={cat.id}
+                style={styles.gridCategoryCard}
+                onPress={() => {
+                  addRecentSearch(cat.name);
+                  onSelectCategory(cat.id);
+                }}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.gridCategoryIcon, { backgroundColor: cat.bgColor }]}>
+                  <Text style={styles.gridCategoryEmoji}>{cat.emoji}</Text>
+                </View>
+                <View style={styles.gridCategoryInfo}>
+                  <Text style={styles.gridCategoryName}>{cat.name}</Text>
+                  <Text style={styles.gridCategoryDesc} numberOfLines={1}>
+                    {cat.description}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.cardBorder,
+    backgroundColor: COLORS.cardBg,
+    paddingBottom: SPACING.xs,
+  },
+  backButton: {
+    padding: SPACING.sm,
+  },
+  searchBarWrapper: {
+    flex: 1,
+    marginRight: SPACING.sm,
+  },
+  scrollContent: {
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.xxxl,
+  },
+  section: {
+    marginBottom: SPACING.xl,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  sectionSubtitle: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.md,
+  },
+  clearText: {
+    fontSize: 12,
+    color: COLORS.accent,
+    fontWeight: '600',
+  },
+  recentChipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+  },
+  recentChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.cardBg,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 8,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    gap: 6,
+    ...SHADOWS.sm,
+  },
+  recentChipText: {
+    fontSize: 13,
+    color: COLORS.textPrimary,
+    fontWeight: '600',
+  },
+  suggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.surfaceLight,
+    gap: SPACING.md,
+  },
+  suggestionText: {
+    flex: 1,
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    fontWeight: '500',
+  },
+  categoriesGrid: {
+    gap: SPACING.sm,
+  },
+  gridCategoryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.cardBg,
+    padding: SPACING.md,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    ...SHADOWS.sm,
+  },
+  gridCategoryIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.md,
+  },
+  gridCategoryEmoji: {
+    fontSize: 22,
+  },
+  gridCategoryInfo: {
+    flex: 1,
+  },
+  gridCategoryName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  gridCategoryDesc: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+});
