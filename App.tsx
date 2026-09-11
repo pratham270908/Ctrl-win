@@ -28,6 +28,7 @@ import { PublicTransportScreen } from './app/transport';
 import { EmergencyScreen } from './app/emergency';
 import { OfflineMapsScreen } from './app/offline-maps';
 import { SettingsScreen } from './app/settings';
+import { MOCK_ROUTE_OPTIONS } from './data/mockRoutes';
 
 type AppScreen =
   | 'SPLASH'
@@ -48,12 +49,20 @@ type AppScreen =
 
 const MainNavigator: React.FC = () => {
   const { user } = useAuth();
-  const { hasCompletedOnboarding, selectedPlace, setSelectedPlace } = useApp();
+  const {
+    hasCompletedOnboarding,
+    selectedPlace,
+    setSelectedPlace,
+    activeRoute,
+    setActiveRoute,
+    activeDestinationPlace,
+    setActiveDestinationPlace,
+    clearActiveRoute,
+  } = useApp();
 
   const [currentScreen, setCurrentScreen] = useState<AppScreen>('SPLASH');
   const [currentTab, setCurrentTab] = useState<TabScreen>('home');
   const [searchQuery, setSearchQuery] = useState<string>('Coffee');
-  const [activeRoute, setActiveRoute] = useState<RouteOption | null>(null);
 
   // Return to previous screen helper
   const navigateToTabs = (tab: TabScreen = 'home') => {
@@ -107,7 +116,24 @@ const MainNavigator: React.FC = () => {
 
   const handleStartNavigation = (route: RouteOption) => {
     setActiveRoute(route);
+    if (selectedPlace) {
+      setActiveDestinationPlace(selectedPlace);
+    }
     setCurrentScreen('NAVIGATION');
+  };
+
+  const handleStartNavigationWithRoute = (route?: RouteOption) => {
+    const r = route || MOCK_ROUTE_OPTIONS[0];
+    setActiveRoute(r);
+    if (selectedPlace) {
+      setActiveDestinationPlace(selectedPlace);
+    }
+    setCurrentScreen('NAVIGATION');
+  };
+
+  const handleEndNavigation = () => {
+    clearActiveRoute();
+    navigateToTabs('home');
   };
 
   return (
@@ -144,6 +170,7 @@ const MainNavigator: React.FC = () => {
               onAccessibilityPress={() => setCurrentScreen('ACCESSIBILITY')}
               onTransportPress={() => setCurrentScreen('TRANSPORT')}
               onMapPress={() => navigateToTabs('map')}
+              onResumeNavigation={() => setCurrentScreen('NAVIGATION')}
             />
           )}
 
@@ -230,10 +257,11 @@ const MainNavigator: React.FC = () => {
       {/* 9. LIVE NAVIGATION SCREEN */}
       {currentScreen === 'NAVIGATION' && (
         <NavigationScreen
-          destinationPlace={selectedPlace}
+          destinationPlace={selectedPlace || activeDestinationPlace}
           activeRoute={activeRoute}
-          onEndNavigation={() => navigateToTabs('home')}
+          onEndNavigation={handleEndNavigation}
           onRouteChange={() => setCurrentScreen('ROUTE_OPTIONS')}
+          onMinimize={() => navigateToTabs('home')}
         />
       )}
 
@@ -242,7 +270,7 @@ const MainNavigator: React.FC = () => {
         <LiveRouteScreen
           onBack={() => navigateToTabs('home')}
           onPlacePress={handlePlaceSelect}
-          onStartNavigation={() => setCurrentScreen('NAVIGATION')}
+          onStartNavigation={() => handleStartNavigationWithRoute()}
         />
       )}
 
@@ -250,7 +278,7 @@ const MainNavigator: React.FC = () => {
       {currentScreen === 'ACCESSIBILITY' && (
         <AccessibilityScreen
           onBack={() => navigateToTabs('home')}
-          onStartAccessibleNavigation={() => setCurrentScreen('NAVIGATION')}
+          onStartAccessibleNavigation={() => handleStartNavigationWithRoute()}
         />
       )}
 
@@ -258,7 +286,7 @@ const MainNavigator: React.FC = () => {
       {currentScreen === 'TRANSPORT' && (
         <PublicTransportScreen
           onBack={() => navigateToTabs('home')}
-          onSelectTransitRoute={() => setCurrentScreen('NAVIGATION')}
+          onSelectTransitRoute={() => handleStartNavigationWithRoute()}
         />
       )}
 

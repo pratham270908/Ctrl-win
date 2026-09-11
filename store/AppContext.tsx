@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppSettings, UserReport, OfflineArea, Place } from '../types';
+import { AppSettings, UserReport, OfflineArea, Place, RouteOption } from '../types';
 import { APP_CONFIG } from '../constants/config';
 
 interface AppContextType {
@@ -22,6 +22,12 @@ interface AppContextType {
   
   activeDestination: { name: string; latitude: number; longitude: number; distanceKm: number; estimatedMinutes: number };
   setActiveDestination: (dest: { name: string; latitude: number; longitude: number; distanceKm: number; estimatedMinutes: number }) => void;
+  
+  activeRoute: RouteOption | null;
+  setActiveRoute: (route: RouteOption | null) => void;
+  activeDestinationPlace: Place | null;
+  setActiveDestinationPlace: (place: Place | null) => void;
+  clearActiveRoute: () => void;
   
   hasCompletedOnboarding: boolean;
   completeOnboarding: () => Promise<void>;
@@ -104,7 +110,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [offlineAreas, setOfflineAreas] = useState<OfflineArea[]>(INITIAL_OFFLINE_AREAS);
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
   const [activeDestination, setActiveDestination] = useState(APP_CONFIG.defaultDestination);
+  const [activeRoute, setActiveRoute] = useState<RouteOption | null>(null);
+  const [activeDestinationPlace, setActiveDestinationPlace] = useState<Place | null>(null);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState<boolean>(false);
+
+  const clearActiveRoute = () => {
+    setActiveRoute(null);
+    setActiveDestinationPlace(null);
+  };
 
   useEffect(() => {
     loadPersistedData();
@@ -256,6 +269,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSelectedPlace,
         activeDestination,
         setActiveDestination,
+        activeRoute,
+        setActiveRoute,
+        activeDestinationPlace,
+        setActiveDestinationPlace,
+        clearActiveRoute,
         hasCompletedOnboarding,
         completeOnboarding,
       }}

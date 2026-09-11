@@ -18,6 +18,7 @@ import { PlaceCard } from '../components/PlaceCard';
 import { CATEGORIES, CategoryInfo } from '../data/mockCategories';
 import { placesService } from '../services/placesService';
 import { locationService } from '../services/locationService';
+import { useApp } from '../store/AppContext';
 import { Place, PlaceCategory } from '../types';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
 import { APP_CONFIG } from '../constants/config';
@@ -33,6 +34,7 @@ interface HomeScreenProps {
   onAccessibilityPress: () => void;
   onTransportPress: () => void;
   onMapPress?: () => void;
+  onResumeNavigation?: () => void;
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
@@ -46,8 +48,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onAccessibilityPress,
   onTransportPress,
   onMapPress,
+  onResumeNavigation,
 }) => {
-  const [recommendedPlaces, setRecommendedPlaces] = useState<Place[]>([]);
+  const { activeRoute, activeDestinationPlace, clearActiveRoute } = useApp();
+  const [routeRecommendations, setRouteRecommendations] = useState<Place[]>([]);
   const [headingAngle, setHeadingAngle] = useState<number>(45);
   const [headingText, setHeadingText] = useState<string>('Travelling North-East');
   const [speedKmh, setSpeedKmh] = useState<number>(38);
@@ -55,38 +59,59 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const [vectorFeedback, setVectorFeedback] = useState<string | null>(null);
 
   useEffect(() => {
-    loadHomeData();
+    loadLocationData();
   }, []);
 
-  const refreshPlaces = async (
-    angle: number,
-    speed: number,
-    filter: 'ALL' | 'AHEAD_ONLY' | 'OPEN_NOW' | 'TOP_RATED' | 'UNDER_1KM'
-  ) => {
-    const places = await placesService.getRecommendedPlaces(angle, speed, filter);
-    setRecommendedPlaces(places);
-  };
+  useEffect(() => {
+    if (activeRoute) {
+      loadRouteRecommendations(activeRoute, activeFilter, headingAngle, speedKmh);
+    } else {
+      setRouteRecommendations([]);
+    }
+  }, [activeRoute, activeDestinationPlace, activeFilter, headingAngle, speedKmh]);
 
-  const loadHomeData = async () => {
-    const places = await placesService.getRecommendedPlaces(headingAngle, speedKmh, activeFilter);
-    setRecommendedPlaces(places);
+  const loadLocationData = async () => {
     const loc = await locationService.getCurrentLocation();
     setHeadingText(`Travelling ${loc.headingText}`);
     setSpeedKmh(loc.speedKmh);
   };
 
+  const loadRouteRecommendations = async (
+    route = activeRoute,
+    filter = activeFilter,
+    angle = headingAngle,
+    speed = speedKmh
+  ) => {
+    if (!route) {
+      setRouteRecommendations([]);
+      return;
+    }
+    const places = await placesService.getRouteRecommendations(
+      activeDestinationPlace,
+      route,
+      angle,
+      speed,
+      filter
+    );
+    setRouteRecommendations(places);
+  };
+
   const handleVectorChange = async (angle: number, label: string) => {
     setHeadingAngle(angle);
     setHeadingText(label);
-    setVectorFeedback(`Vector changed to ${angle}° • Places re-calculated ahead`);
-    await refreshPlaces(angle, speedKmh, activeFilter);
+    setVectorFeedback(`Vector changed to ${angle}° • Route places re-calculated ahead`);
+    if (activeRoute) {
+      await loadRouteRecommendations(activeRoute, activeFilter, angle, speedKmh);
+    }
     setTimeout(() => setVectorFeedback(null), 3200);
   };
 
   const handleSpeedChange = async (speed: number) => {
     setSpeedKmh(speed);
     setVectorFeedback(`Speed set to ${speed} km/h • Reach times updated`);
-    await refreshPlaces(headingAngle, speed, activeFilter);
+    if (activeRoute) {
+      await loadRouteRecommendations(activeRoute, activeFilter, headingAngle, speed);
+    }
     setTimeout(() => setVectorFeedback(null), 3200);
   };
 
@@ -94,7 +119,26 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     filter: 'ALL' | 'AHEAD_ONLY' | 'OPEN_NOW' | 'TOP_RATED' | 'UNDER_1KM'
   ) => {
     setActiveFilter(filter);
-    await refreshPlaces(headingAngle, speedKmh, filter);
+    if (activeRoute) {
+      await loadRouteRecommendations(activeRoute, filter, headingAngle, speedKmh);
+    }
+  };
+
+  const handleEndActiveRoute = () => {
+    Alert.alert(
+      'End Route Guidance?',
+      'Are you sure you want to cancel the active journey route? Route recommendations will be hidden.',
+      [
+        { text: 'Keep Route', style: 'cancel' },
+        {
+          text: 'End Route',
+          style: 'destructive',
+          onPress: () => {
+            clearActiveRoute();
+          },
+        },
+      ]
+    );
   };
 
   const handleSimulateHeading = () => {
@@ -110,6 +154,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       '• Ahead: Mindspace flyover traffic is moving smoothly (4 min saved).\n• Recommended: Shell EV station has 2 open fast chargers 1.1km ahead.'
     );
   };
+
+  const currentDestinationName =
+    activeDestinationPlace?.name || (activeRoute ? APP_CONFIG.defaultDestination.name : 'Destination');
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -129,6 +176,50 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           onPress={onSearchPress}
           placeholder="What are you looking for ahead?"
         />
+
+        {/* Active Journey Banner (Only shown when route is active) */}
+        {activeRoute && (
+          <View style={styles.activeJourneyCard}>
+            <View style={styles.activeJourneyHeaderRow}>
+              <View style={styles.activePill}>
+                <View style={styles.activePulseDot} />
+                <Text style={styles.activePillText}>ACTIVE JOURNEY ROUTE</Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.cancelRouteBtn}
+                onPress={handleEndActiveRoute}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close-circle" size={16} color={COLORS.danger} />
+                <Text style={styles.cancelRouteText}>End Route</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.activeJourneyBodyRow}>
+              <View style={styles.activeDestCol}>
+                <Text style={styles.activeDestTitle} numberOfLines={1}>
+                  {currentDestinationName}
+                </Text>
+                <Text style={styles.activeRouteStats} numberOfLines={1}>
+                  {activeRoute.title} • {activeRoute.estimatedMinutes}m • {activeRoute.distanceKm} km
+                </Text>
+              </View>
+
+              {onResumeNavigation && (
+                <TouchableOpacity
+                  style={styles.resumeNavBtn}
+                  onPress={onResumeNavigation}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="navigate" size={16} color="#FFFFFF" />
+                  <Text style={styles.resumeNavBtnText}>Resume</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        )}
 
         {/* Quick Categories Bar */}
         <View style={styles.sectionHeader}>
@@ -168,9 +259,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             <View style={styles.mapHeaderLeft}>
               <View style={styles.radarPill}>
                 <View style={styles.radarDot} />
-                <Text style={styles.radarText}>LIVE TRAJECTORY PREVIEW</Text>
+                <Text style={styles.radarText}>
+                  {activeRoute ? 'LIVE ACTIVE ROUTE CORRIDOR' : 'LIVE TRAJECTORY PREVIEW'}
+                </Text>
               </View>
-              <Text style={styles.mapTitle}>Places on Current Path</Text>
+              <Text style={styles.mapTitle}>
+                {activeRoute ? `Route to ${currentDestinationName}` : 'Places on Current Path'}
+              </Text>
             </View>
 
             <TouchableOpacity
@@ -178,8 +273,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               onPress={() => {
                 if (onMapPress) {
                   onMapPress();
-                } else if (recommendedPlaces.length > 0) {
-                  onPlacePress(recommendedPlaces[0]);
+                } else if (routeRecommendations.length > 0) {
+                  onPlacePress(routeRecommendations[0]);
                 }
               }}
               activeOpacity={0.75}
@@ -192,10 +287,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           <View style={styles.mapWrapper}>
             <InteractiveMap
               height={200}
-              places={recommendedPlaces}
-              selectedPlace={recommendedPlaces[0] || null}
+              places={activeRoute ? routeRecommendations : []}
+              selectedPlace={activeRoute && routeRecommendations.length > 0 ? routeRecommendations[0] : null}
               onSelectPlace={onPlacePress}
-              destinationName={APP_CONFIG.defaultDestination.name}
+              destinationName={activeRoute ? currentDestinationName : APP_CONFIG.defaultDestination.name}
             />
           </View>
         </View>
@@ -251,75 +346,106 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </TouchableOpacity>
         </View>
 
-        {/* Recommended Places Section with Interactive Dynamic Filters */}
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionTitle}>Recommended For Your Journey</Text>
-            <Text style={styles.sectionSubtitle}>
-              Ranked by forward trajectory & minimal deviation
-            </Text>
-          </View>
-        </View>
-
-        {/* Dynamic Vector Change Alert Banner */}
-        {vectorFeedback && (
-          <View style={styles.feedbackBanner}>
-            <Ionicons name="sparkles" size={14} color={COLORS.accent} />
-            <Text style={styles.feedbackBannerText}>{vectorFeedback}</Text>
-          </View>
-        )}
-
-        {/* Interactive Filter Pills */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterPillsRow}
-        >
-          {[
-            { id: 'ALL', label: 'All Useful' },
-            { id: 'AHEAD_ONLY', label: 'Ahead Only 🎯' },
-            { id: 'OPEN_NOW', label: 'Open Now 🟢' },
-            { id: 'TOP_RATED', label: '★ 4.5+ Rating' },
-            { id: 'UNDER_1KM', label: '< 1 km Close' },
-          ].map((pill) => {
-            const isActive = activeFilter === pill.id;
-            return (
-              <TouchableOpacity
-                key={pill.id}
-                style={[styles.filterPill, isActive && styles.filterPillActive]}
-                onPress={() => handleFilterChange(pill.id as any)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
-                  {pill.label}
+        {/* --------------------------------------------------------------- */}
+        {/* RECOMMENDATION SECTION: DISPLAY ONLY WHEN ACTIVE ROUTE EXISTS    */}
+        {/* --------------------------------------------------------------- */}
+        {activeRoute ? (
+          <>
+            <View style={styles.sectionHeader}>
+              <View style={{ flex: 1 }}>
+                <View style={styles.routePillTag}>
+                  <Ionicons name="git-branch" size={12} color={COLORS.ahead} />
+                  <Text style={styles.routePillTagText}>ACTIVE JOURNEY RECOMMENDATIONS</Text>
+                </View>
+                <Text style={styles.sectionTitle}>Recommended For Your Journey</Text>
+                <Text style={styles.sectionSubtitle}>
+                  Forward places on route to {currentDestinationName} • Minimal deviation
                 </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+              </View>
+            </View>
 
-        {/* Place Cards or Empty State */}
-        {recommendedPlaces.length === 0 ? (
-          <View style={styles.emptyFilteredBox}>
-            <Ionicons name="filter-outline" size={28} color={COLORS.textMuted} />
-            <Text style={styles.emptyFilteredTitle}>No places match this filter along current vector</Text>
-            <TouchableOpacity
-              style={styles.resetFilterBtn}
-              onPress={() => handleFilterChange('ALL')}
-              activeOpacity={0.75}
+            {/* Dynamic Vector Change Alert Banner */}
+            {vectorFeedback && (
+              <View style={styles.feedbackBanner}>
+                <Ionicons name="sparkles" size={14} color={COLORS.accent} />
+                <Text style={styles.feedbackBannerText}>{vectorFeedback}</Text>
+              </View>
+            )}
+
+            {/* Interactive Filter Pills */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filterPillsRow}
             >
-              <Text style={styles.resetFilterText}>Reset to All Useful</Text>
+              {[
+                { id: 'ALL', label: 'All Useful' },
+                { id: 'AHEAD_ONLY', label: 'Ahead Only 🎯' },
+                { id: 'OPEN_NOW', label: 'Open Now 🟢' },
+                { id: 'TOP_RATED', label: '★ 4.5+ Rating' },
+                { id: 'UNDER_1KM', label: '< 1 km Close' },
+              ].map((pill) => {
+                const isActive = activeFilter === pill.id;
+                return (
+                  <TouchableOpacity
+                    key={pill.id}
+                    style={[styles.filterPill, isActive && styles.filterPillActive]}
+                    onPress={() => handleFilterChange(pill.id as any)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
+                      {pill.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {/* Route Recommendation Cards or Filter Reset */}
+            {routeRecommendations.length === 0 ? (
+              <View style={styles.emptyFilteredBox}>
+                <Ionicons name="filter-outline" size={28} color={COLORS.textMuted} />
+                <Text style={styles.emptyFilteredTitle}>No places match this filter along active route</Text>
+                <TouchableOpacity
+                  style={styles.resetFilterBtn}
+                  onPress={() => handleFilterChange('ALL')}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.resetFilterText}>Reset to All Useful</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              routeRecommendations.map((place) => (
+                <PlaceCard
+                  key={place.id}
+                  place={place}
+                  onPress={onPlacePress}
+                  onNavigatePress={onNavigatePress}
+                />
+              ))
+            )}
+          </>
+        ) : (
+          /* When NO route is active: Show an en-route guidance card instead of recommendation cards */
+          <View style={styles.noRoutePromptCard}>
+            <View style={styles.noRouteIconCircle}>
+              <Ionicons name="compass-outline" size={24} color={COLORS.accent} />
+            </View>
+            <View style={styles.noRouteTextCol}>
+              <Text style={styles.noRoutePromptTitle}>En-Route Recommendations</Text>
+              <Text style={styles.noRoutePromptSub}>
+                Select a destination and start a route to unlock smart stops ahead with minimal detour.
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.noRouteActionBtn}
+              onPress={onSearchPress}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="search" size={15} color="#FFFFFF" />
+              <Text style={styles.noRouteActionBtnText}>Find Destination</Text>
             </TouchableOpacity>
           </View>
-        ) : (
-          recommendedPlaces.map((place) => (
-            <PlaceCard
-              key={place.id}
-              place={place}
-              onPress={onPlacePress}
-              onNavigatePress={onNavigatePress}
-            />
-          ))
         )}
 
         <View style={{ height: 40 }} />
@@ -533,6 +659,164 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.full,
   },
   resetFilterText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  /* Active Journey Banner */
+  activeJourneyCard: {
+    backgroundColor: '#0F172A',
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.xs,
+    marginBottom: SPACING.sm,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: '#334155',
+    ...SHADOWS.md,
+  },
+  activeJourneyHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.xs,
+  },
+  activePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(34, 197, 94, 0.16)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.3)',
+  },
+  activePulseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.ahead,
+  },
+  activePillText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.ahead,
+    letterSpacing: 0.5,
+  },
+  cancelRouteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: RADIUS.full,
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+  },
+  cancelRouteText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.danger,
+  },
+  activeJourneyBodyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
+    marginTop: 2,
+  },
+  activeDestCol: {
+    flex: 1,
+  },
+  activeDestTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  activeRouteStats: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  resumeNavBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: COLORS.accent,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: RADIUS.lg,
+    ...SHADOWS.sm,
+  },
+  resumeNavBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  routePillTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 2,
+  },
+  routePillTagText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.ahead,
+    letterSpacing: 0.5,
+  },
+  /* No Route Guidance Card */
+  noRoutePromptCard: {
+    backgroundColor: COLORS.cardBg,
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    alignItems: 'center',
+    ...SHADOWS.sm,
+  },
+  noRouteIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.accentLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  noRouteTextCol: {
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  noRoutePromptTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    textAlign: 'center',
+  },
+  noRoutePromptSub: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 16,
+    paddingHorizontal: SPACING.sm,
+  },
+  noRouteActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.accent,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: RADIUS.full,
+    ...SHADOWS.sm,
+  },
+  noRouteActionBtnText: {
     fontSize: 12,
     fontWeight: '700',
     color: '#FFFFFF',

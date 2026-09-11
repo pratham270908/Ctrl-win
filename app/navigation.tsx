@@ -19,6 +19,7 @@ interface NavigationScreenProps {
   activeRoute?: RouteOption | null;
   onEndNavigation: () => void;
   onRouteChange: () => void;
+  onMinimize?: () => void;
 }
 
 export const NavigationScreen: React.FC<NavigationScreenProps> = ({
@@ -26,6 +27,7 @@ export const NavigationScreen: React.FC<NavigationScreenProps> = ({
   activeRoute,
   onEndNavigation,
   onRouteChange,
+  onMinimize,
 }) => {
   const { settings, updateSetting } = useApp();
   const [instructions, setInstructions] = useState<TurnInstruction[]>([]);
@@ -356,6 +358,17 @@ export const NavigationScreen: React.FC<NavigationScreenProps> = ({
             <Ionicons name="locate" size={20} color={COLORS.accent} />
             <Text style={styles.actionBtnText}>Recenter</Text>
           </TouchableOpacity>
+
+          {onMinimize && (
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={onMinimize}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="compass-outline" size={20} color={COLORS.ahead} />
+              <Text style={styles.actionBtnText}>Overview</Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             style={styles.actionBtn}

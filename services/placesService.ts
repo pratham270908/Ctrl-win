@@ -1,4 +1,4 @@
-import { Place, PlaceCategory, SortCriteria, Coordinates } from '../types';
+import { Place, PlaceCategory, SortCriteria, Coordinates, RouteOption } from '../types';
 import { MOCK_PLACES } from '../data/mockPlaces';
 import { sortPlaces } from '../utils/sortingUtils';
 import { classifyDirection, calculateDistanceMeters } from '../utils/directionUtils';
@@ -71,6 +71,64 @@ class PlacesService {
     }
 
     return sortPlaces(candidates, 'BEST_OVERALL').slice(0, 6);
+  }
+
+  /**
+   * Fetches smart recommendations strictly along/ahead of an active route to a destination.
+   * Analyzes forward direction, on/near active route, minimal deviation, distance, travel time, rating, and open status.
+   */
+  async getRouteRecommendations(
+    destinationPlace?: Place | null,
+    activeRoute?: RouteOption | null,
+    headingAngle: number = 45,
+    speedKmh: number = 38,
+    filterOption: RecommendedFilter = 'ALL'
+  ): Promise<Place[]> {
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const all = this.getPlacesForHeading(headingAngle, speedKmh);
+
+    // Corridor buffer based on destination distance
+    const maxDistanceMeters = destinationPlace
+      ? Math.max(2500, destinationPlace.distance + 1000)
+      : activeRoute
+      ? activeRoute.distanceKm * 1000 + 800
+      : 3500;
+
+    let candidates = all.filter((p) => {
+      // Exclude destination place itself
+      if (destinationPlace && p.id === destinationPlace.id) return false;
+
+      // Must be along forward travel path (AHEAD or ON_ROUTE)
+      const isForward = p.direction === 'AHEAD' || p.direction === 'ON_ROUTE';
+      if (!isForward) return false;
+
+      // Minimal deviation: within 4 minutes detour from active path
+      const minimalDeviation = p.routeDeviation <= 4;
+      if (!minimalDeviation) return false;
+
+      // Within distance corridor of active trip
+      const withinCorridor = p.distance <= maxDistanceMeters;
+      return withinCorridor;
+    });
+
+    if (filterOption === 'AHEAD_ONLY') {
+      candidates = candidates.filter((p) => p.direction === 'AHEAD');
+    } else if (filterOption === 'OPEN_NOW') {
+      candidates = candidates.filter((p) => p.status === 'OPEN');
+    } else if (filterOption === 'TOP_RATED') {
+      candidates = candidates.filter((p) => p.rating >= 4.5);
+    } else if (filterOption === 'UNDER_1KM') {
+      candidates = candidates.filter((p) => p.distance <= 1000);
+    }
+
+    // Sort prioritizing ON_ROUTE places, lowest route deviation, quickest travel time, and top ratings
+    return candidates.sort((a, b) => {
+      if (a.direction === 'ON_ROUTE' && b.direction !== 'ON_ROUTE') return -1;
+      if (b.direction === 'ON_ROUTE' && a.direction !== 'ON_ROUTE') return 1;
+      if (a.routeDeviation !== b.routeDeviation) return a.routeDeviation - b.routeDeviation;
+      if (a.travelTime !== b.travelTime) return a.travelTime - b.travelTime;
+      return b.rating - a.rating;
+    }).slice(0, 6);
   }
 
   /**
