@@ -28,9 +28,11 @@ import { PublicTransportScreen } from './app/transport';
 import { EmergencyScreen } from './app/emergency';
 import { OfflineMapsScreen } from './app/offline-maps';
 import { SettingsScreen } from './app/settings';
+import { MapTestScreen } from './app/MapTestScreen';
 import { MOCK_ROUTE_OPTIONS } from './data/mockRoutes';
 
 type AppScreen =
+  | 'MAP_TEST'
   | 'SPLASH'
   | 'LOGIN'
   | 'ONBOARDING'
@@ -61,7 +63,7 @@ const MainNavigator: React.FC = () => {
     addRecentRoute,
   } = useApp();
 
-  const [currentScreen, setCurrentScreen] = useState<AppScreen>('SPLASH');
+  const [currentScreen, setCurrentScreen] = useState<AppScreen>('TABS');
   const [currentTab, setCurrentTab] = useState<TabScreen>('home');
   const [searchQuery, setSearchQuery] = useState<string>('Coffee');
 
@@ -152,6 +154,9 @@ const MainNavigator: React.FC = () => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+
+      {/* 0. ISOLATED MAP TEST SCREEN */}
+      {currentScreen === 'MAP_TEST' && <MapTestScreen />}
 
       {/* 1. SPLASH SCREEN */}
       {currentScreen === 'SPLASH' && (

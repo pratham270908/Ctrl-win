@@ -56,6 +56,76 @@ class DirectionsService implements IDirectionsService {
       longitude: APP_CONFIG.defaultDestination.longitude,
     };
 
+    // 1. Try Mapbox Directions API if key configured
+    if (API_CONFIG.hasMapboxApi()) {
+      try {
+        const mbUrl = `https://api.mapbox.com/directions/v5/mapbox/driving/${originCoords.longitude},${originCoords.latitude};${destCoords.longitude},${destCoords.latitude}?alternatives=true&geometries=polyline&overview=full&steps=true&access_token=${API_CONFIG.mapboxApiKey}`;
+        const response = await fetch(mbUrl);
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data && Array.isArray(data.routes) && data.routes.length > 0) {
+            const parsedRoutes: RouteOption[] = data.routes.map((route: any, index: number) => {
+              const minutes = Math.max(1, Math.round(route.duration / 60));
+              const distKm = Math.round((route.distance / 1000) * 10) / 10;
+
+              if (index === 0 && route.geometry) {
+                this.activePolyline = decodePolyline(route.geometry);
+              }
+
+              if (index === 0 && route.legs?.[0]?.steps) {
+                this.liveInstructions = route.legs[0].steps.map((step: any, stepIdx: number) => {
+                  const rawInst = step.maneuver?.instruction || step.name || 'Continue straight';
+                  const dist = Math.round(step.distance || 50);
+                  const distText = dist >= 1000 ? `${(dist / 1000).toFixed(1)} km` : `${dist} m`;
+
+                  return {
+                    id: `turn-mb-${stepIdx + 1}`,
+                    instruction: rawInst,
+                    distanceText: distText,
+                    icon: getManeuverIcon(`${step.maneuver?.type || ''} ${step.maneuver?.modifier || ''}`),
+                    streetName: step.name || 'Corridor Road',
+                    isDestination: stepIdx === route.legs[0].steps.length - 1,
+                  };
+                });
+              }
+
+              const type =
+                index === 0 ? 'FASTEST' : index === 1 ? 'LOWEST_DEVIATION' : 'BEST_OVERALL';
+              const title =
+                index === 0
+                  ? 'Fastest Route (Mapbox Live)'
+                  : index === 1
+                  ? 'Alternative Corridor Route'
+                  : 'Best Overall Journey Fit';
+
+              const summaryText = route.legs?.[0]?.summary || '';
+              return {
+                id: `route-mb-${index + 1}`,
+                type,
+                title,
+                subtitle: summaryText ? `Via ${summaryText}` : 'Optimal navigation path',
+                estimatedMinutes: minutes,
+                distanceKm: distKm,
+                trafficLevel: index === 0 ? 'LOW' : 'MODERATE',
+                highlights: [
+                  'Mapbox real-world road geometry',
+                  'Live turn-by-turn guidance',
+                  'Vector route precision',
+                ],
+                stopsCount: index,
+              };
+            });
+
+            return parsedRoutes;
+          }
+        }
+      } catch (err) {
+        console.warn('Mapbox Directions API notice (using fallback):', err);
+      }
+    }
+
+    // 2. Try Google Routes API if key configured
     if (API_CONFIG.hasDirectionsApi()) {
       try {
         const response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {

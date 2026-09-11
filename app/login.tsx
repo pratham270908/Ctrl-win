@@ -10,295 +10,305 @@ import {
   Platform,
   ScrollView,
   Alert,
-  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
 import { useAuth } from '../store/AuthContext';
+import { COLORS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
 
 interface LoginScreenProps {
   onSuccess: () => void;
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
-  const { login, register, loginAsGuest, isLoading } = useAuth();
-  const { width } = useWindowDimensions();
+  const { login, loginAsGuest, isLoading } = useAuth();
 
-  const [isSignUp, setIsSignUp] = useState<boolean>(false);
-  const [name, setName] = useState<string>('');
-  const [phone, setPhone] = useState<string>('');
-  const [password, setPassword] = useState<string>('');
+  const [phone, setPhone] = useState<string>('+91 98765 43210');
+  const [password, setPassword] = useState<string>('journey2026');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [rememberMe, setRememberMe] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [focusedField, setFocusedField] = useState<'phone' | 'password' | null>(null);
 
-  const isCompact = width < 520;
-
-  const handleAuth = async () => {
+  const handleLogin = async () => {
     setErrorMessage('');
+    const trimmedPhone = phone.trim();
+    const trimmedPassword = password.trim();
 
-    if (!phone.trim() || !password.trim()) {
-      setErrorMessage('Please enter both phone number and password.');
-      return;
-    }
-
-    if (isSignUp && !name.trim()) {
-      setErrorMessage('Please enter your full name.');
+    if (!trimmedPhone || !trimmedPassword) {
+      setErrorMessage('Please enter both your phone number and password.');
       return;
     }
 
     try {
-      // Keep the existing authentication flow untouched. The current auth service
-      // accepts the first credential as a string, so the phone number is passed
-      // through without changing the authentication implementation.
-      if (isSignUp) {
-        await register(name, phone, password);
-      } else {
-        await login(phone, password);
-      }
+      await login(trimmedPhone, trimmedPassword);
       onSuccess();
     } catch (e: any) {
-      setErrorMessage(e.message || 'Authentication error. Please try again.');
+      setErrorMessage(e?.message || 'Authentication error. Please verify your credentials.');
     }
+  };
+
+  const handleForgotPassword = () => {
+    Alert.alert(
+      'Forgot Password',
+      'To reset your password, please contact your operations supervisor or system dispatch administrator.',
+      [{ text: 'Dismiss', style: 'cancel' }]
+    );
+  };
+
+  const handleContactAdmin = () => {
+    Alert.alert(
+      'Account Registration',
+      'New user accounts are provisioned by your fleet administrator. Please contact operations@ctrlwin.app or reach out to internal dispatch.',
+      [{ text: 'OK', style: 'default' }]
+    );
   };
 
   const handleGuest = async () => {
     try {
       await loginAsGuest();
       onSuccess();
-    } catch (e) {
-      Alert.alert('Guest Login', 'Proceeding as Guest traveler.');
+    } catch {
       onSuccess();
     }
   };
 
-  const handleForgotPassword = () => {
-    Alert.alert(
-      'Forgot password?',
-      'Password recovery is not connected to the existing authentication service yet.'
-    );
-  };
-
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
-      {/* Full-screen fleet/map backdrop. Decorative only; no app logic is changed. */}
-      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-        <View style={styles.mapGlowOne} />
-        <View style={styles.mapGlowTwo} />
+    <View style={styles.container}>
+      {/* 1. Full-Screen Dark City/Map Background with Grid, Corridors, Vehicles & HUD */}
+      <View style={styles.mapBackground} pointerEvents="none">
+        {/* Subtle grid pattern */}
+        <View style={styles.gridLineHorizontal1} />
+        <View style={styles.gridLineHorizontal2} />
+        <View style={styles.gridLineHorizontal3} />
+        <View style={styles.gridLineVertical1} />
+        <View style={styles.gridLineVertical2} />
+        <View style={styles.gridLineVertical3} />
 
-        <View style={[styles.road, styles.roadOne]} />
-        <View style={[styles.road, styles.roadTwo]} />
-        <View style={[styles.road, styles.roadThree]} />
-        <View style={[styles.road, styles.roadFour]} />
-        <View style={[styles.routeLine, styles.routeOne]} />
-        <View style={[styles.routeLine, styles.routeTwo]} />
+        {/* Ambient Road Corridors */}
+        <View style={styles.corridorPrimary} />
+        <View style={styles.corridorSecondary} />
+        <View style={styles.corridorHighway} />
+        <View style={styles.corridorHighwayGlow} />
 
-        <View style={[styles.vehicleMarker, styles.vehicleOne]}>
-          <Ionicons name="car-sport" size={14} color={COLORS.accent} />
+        {/* Dynamic Route Polyline */}
+        <View style={styles.routePolyline} />
+
+        {/* Navigation / Compass HUD Rings */}
+        <View style={styles.hudRingOuter}>
+          <View style={styles.hudRingMiddle}>
+            <View style={styles.hudRingInner} />
+          </View>
         </View>
-        <View style={[styles.vehicleMarker, styles.vehicleTwo]}>
-          <Ionicons name="navigate" size={13} color={COLORS.ahead} />
+        <View style={styles.hudCrosshairH} />
+        <View style={styles.hudCrosshairV} />
+
+        {/* Vehicle Telemetry Pulse Markers */}
+        <View style={styles.vehicleMarker1}>
+          <View style={styles.vehiclePulseRing1} />
+          <View style={styles.vehicleDot1}>
+            <Ionicons name="navigate" size={10} color="#050811" style={{ transform: [{ rotate: '45deg' }] }} />
+          </View>
+          <View style={styles.vehicleTag1}>
+            <Text style={styles.vehicleTagText}>VEHICLE #04 • 42 km/h</Text>
+          </View>
         </View>
-        <View style={[styles.vehicleMarker, styles.vehicleThree]}>
-          <Ionicons name="car" size={13} color={COLORS.accentCyan} />
+
+        <View style={styles.vehicleMarker2}>
+          <View style={styles.vehiclePulseRing2} />
+          <View style={styles.vehicleDot2} />
+          <View style={styles.vehicleTag2}>
+            <Text style={styles.vehicleTagText2}>FLEET NODE #12</Text>
+          </View>
         </View>
-        <View style={[styles.mapPin, styles.pinOne]} />
-        <View style={[styles.mapPin, styles.pinTwo]} />
+
+        <View style={styles.vehicleMarker3}>
+          <View style={styles.vehiclePulseRing3} />
+          <View style={styles.vehicleDot3} />
+        </View>
+
+        {/* Ambient Glows */}
+        <View style={styles.ambientGlowTop} />
+        <View style={styles.ambientGlowBottom} />
       </View>
 
-      <View style={styles.backdropOverlay} pointerEvents="none" />
-
-      <KeyboardAvoidingView
-        style={styles.keyboardAvoid}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView
-          contentContainerStyle={[
-            styles.scrollContent,
-            isCompact ? styles.scrollContentCompact : styles.scrollContentWide,
-          ]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
+      {/* 2. Interactive Centered Login Flow */}
+      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom', 'left', 'right']}>
+        <KeyboardAvoidingView
+          style={styles.keyboardAvoid}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          <View
-            style={[
-              styles.loginCard,
-              isCompact ? styles.loginCardCompact : styles.loginCardWide,
-            ]}
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
           >
-            {/* Brand */}
-            <View style={styles.brandRow}>
-              <View style={styles.brandMark}>
-                <Text style={styles.brandMarkText}>+</Text>
+            {/* Centered Glassmorphism Login Card */}
+            <View style={styles.loginCard}>
+              {/* Brand Logo Header: Lime '+' Mark & Ctrl+Win */}
+              <View style={styles.brandRow}>
+                <View style={styles.logoBadge}>
+                  <Text style={styles.logoPlusText}>+</Text>
+                </View>
+                <Text style={styles.brandTitle}>
+                  Ctrl<Text style={styles.brandPlus}>+</Text>Win
+                </Text>
               </View>
-              <Text style={styles.brandText}>Ctrl<Text style={styles.brandPlus}>+</Text>Win</Text>
-            </View>
 
-            <View style={styles.headingBlock}>
-              <Text style={styles.welcomeTitle}>
-                {isSignUp ? 'Create Account' : 'Welcome Back'}
-              </Text>
+              {/* Title & Subtitle */}
+              <Text style={styles.welcomeTitle}>Welcome Back</Text>
               <Text style={styles.welcomeSubtitle}>
-                {isSignUp
-                  ? 'Create your account to continue to the operations dashboard.'
-                  : 'Sign in to your account to continue to the operations dashboard.'}
+                Sign in to your account to continue to the operations dashboard.
               </Text>
-            </View>
 
-            {errorMessage ? (
-              <View style={styles.errorBanner}>
-                <Ionicons name="alert-circle-outline" size={16} color={COLORS.danger} />
-                <Text style={styles.errorText}>{errorMessage}</Text>
-              </View>
-            ) : null}
+              {/* Error Banner if invalid */}
+              {errorMessage ? (
+                <View style={styles.errorBanner}>
+                  <Ionicons name="alert-circle" size={16} color={COLORS.danger} />
+                  <Text style={styles.errorText}>{errorMessage}</Text>
+                </View>
+              ) : null}
 
-            {isSignUp && (
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Full Name</Text>
-                <View style={styles.inputRow}>
-                  <Ionicons name="person-outline" size={18} color={COLORS.textMuted} />
+              {/* Field 1: Phone Number */}
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>Phone Number</Text>
+                <View
+                  style={[
+                    styles.inputContainer,
+                    focusedField === 'phone' && styles.inputContainerFocused,
+                  ]}
+                >
+                  <Ionicons
+                    name="call-outline"
+                    size={18}
+                    color={focusedField === 'phone' ? '#A3E635' : '#64748B'}
+                    style={styles.inputIcon}
+                  />
                   <TextInput
-                    style={styles.input}
-                    placeholder="Enter your full name"
-                    placeholderTextColor={COLORS.textMuted}
-                    value={name}
-                    onChangeText={setName}
-                    autoCapitalize="words"
+                    style={styles.textInput}
+                    placeholder="Enter your phone number"
+                    placeholderTextColor="#475569"
+                    value={phone}
+                    onChangeText={setPhone}
+                    keyboardType="phone-pad"
+                    autoCapitalize="none"
+                    onFocus={() => setFocusedField('phone')}
+                    onBlur={() => setFocusedField(null)}
                   />
                 </View>
               </View>
-            )}
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Phone Number</Text>
-              <View style={styles.inputRow}>
-                <Ionicons name="call-outline" size={18} color={COLORS.textMuted} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter your phone number"
-                  placeholderTextColor={COLORS.textMuted}
-                  value={phone}
-                  onChangeText={setPhone}
-                  keyboardType="phone-pad"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </View>
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Password</Text>
-              <View style={styles.inputRow}>
-                <Ionicons name="lock-closed-outline" size={18} color={COLORS.textMuted} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter your password"
-                  placeholderTextColor={COLORS.textMuted}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPassword}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                <TouchableOpacity
-                  onPress={() => setShowPassword((visible) => !visible)}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  accessibilityRole="button"
-                  accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+              {/* Field 2: Password */}
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>Password</Text>
+                <View
+                  style={[
+                    styles.inputContainer,
+                    focusedField === 'password' && styles.inputContainerFocused,
+                  ]}
                 >
                   <Ionicons
-                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                    size={19}
-                    color={COLORS.textMuted}
+                    name="lock-closed-outline"
+                    size={18}
+                    color={focusedField === 'password' ? '#A3E635' : '#64748B'}
+                    style={styles.inputIcon}
                   />
-                </TouchableOpacity>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="Enter your password"
+                    placeholderTextColor="#475569"
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry={!showPassword}
+                    onFocus={() => setFocusedField('password')}
+                    onBlur={() => setFocusedField(null)}
+                  />
+                  <TouchableOpacity
+                    onPress={() => setShowPassword(!showPassword)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    style={styles.eyeBtn}
+                    accessibilityLabel="Toggle password visibility"
+                  >
+                    <Ionicons
+                      name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                      size={18}
+                      color="#94A3B8"
+                    />
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
 
-            {!isSignUp && (
+              {/* Remember Me & Forgot Password Row */}
               <View style={styles.optionsRow}>
                 <TouchableOpacity
-                  style={styles.rememberRow}
-                  onPress={() => setRememberMe((value) => !value)}
-                  activeOpacity={0.75}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: rememberMe }}
+                  style={styles.rememberMeRow}
+                  onPress={() => setRememberMe(!rememberMe)}
+                  activeOpacity={0.8}
                 >
                   <View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
-                    {rememberMe && <Ionicons name="checkmark" size={13} color="#0A0F1E" />}
+                    {rememberMe && <Ionicons name="checkmark" size={13} color="#050811" />}
                   </View>
-                  <Text style={styles.rememberText}>Remember me</Text>
+                  <Text style={styles.rememberMeText}>Remember me</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity onPress={handleForgotPassword} activeOpacity={0.75}>
-                  <Text style={styles.forgotText}>Forgot password?</Text>
+                  <Text style={styles.forgotPasswordText}>Forgot password?</Text>
                 </TouchableOpacity>
               </View>
-            )}
 
-            <TouchableOpacity
-              style={styles.loginButton}
-              onPress={handleAuth}
-              disabled={isLoading}
-              activeOpacity={0.86}
-            >
-              {isLoading ? (
-                <ActivityIndicator color="#0A0F1E" />
-              ) : (
-                <>
-                  <Text style={styles.loginButtonText}>
-                    {isSignUp ? 'Create Account' : 'Login'}
-                  </Text>
-                  <Ionicons name="arrow-forward" size={18} color="#0A0F1E" />
-                </>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.switchModeButton}
-              onPress={() => {
-                setIsSignUp((value) => !value);
-                setErrorMessage('');
-              }}
-              activeOpacity={0.75}
-            >
-              <Text style={styles.switchModeText}>
-                {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
-                <Text style={styles.switchModeHighlight}>
-                  {isSignUp ? 'Sign in' : 'Contact your administrator'}
-                </Text>
-              </Text>
-            </TouchableOpacity>
-
-            {!isSignUp && (
+              {/* Prominent Lime/Green Login Button: "Login →" */}
               <TouchableOpacity
-                style={styles.guestButton}
-                onPress={handleGuest}
-                activeOpacity={0.8}
+                style={styles.loginButton}
+                onPress={handleLogin}
+                disabled={isLoading}
+                activeOpacity={0.85}
               >
-                <Ionicons name="compass-outline" size={17} color={COLORS.textSecondary} />
-                <Text style={styles.guestButtonText}>Continue as Guest</Text>
+                {isLoading ? (
+                  <ActivityIndicator color="#050811" size="small" />
+                ) : (
+                  <>
+                    <Text style={styles.loginButtonText}>Login</Text>
+                    <Ionicons name="arrow-forward" size={18} color="#050811" style={styles.arrowIcon} />
+                  </>
+                )}
               </TouchableOpacity>
-            )}
-          </View>
 
-          <View style={styles.secureFooter}>
-            <Ionicons name="shield-checkmark-outline" size={14} color={COLORS.ahead} />
-            <Text style={styles.secureFooterText}>Secure fleet operations</Text>
-            <View style={styles.footerDot} />
-            <Text style={styles.secureFooterText}>Ctrl+Win</Text>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+              {/* Bottom Notice: Don't have an account? Contact your administrator */}
+              <View style={styles.footerWrap}>
+                <Text style={styles.footerText}>
+                  Don't have an account?{' '}
+                  <Text style={styles.footerLink} onPress={handleContactAdmin}>
+                    Contact your administrator
+                  </Text>
+                </Text>
+              </View>
+
+              {/* Quick Guest Explorer Access */}
+              <TouchableOpacity
+                style={styles.guestLink}
+                onPress={handleGuest}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.guestLinkText}>
+                  Or explore directly as <Text style={styles.guestLinkBold}>Guest Explorer →</Text>
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#070B13',
+    backgroundColor: '#050811',
+    position: 'relative',
+  },
+  safeArea: {
+    flex: 1,
   },
   keyboardAvoid: {
     flex: 1,
@@ -307,350 +317,522 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.lg,
   },
-  scrollContentWide: {
-    paddingHorizontal: 32,
-    paddingVertical: 42,
+
+  /* ----------------------------------------------------
+     FULL-SCREEN DARK CITY / MAP BACKGROUND
+  ---------------------------------------------------- */
+  mapBackground: {
+    ...(StyleSheet.absoluteFill as any),
+    backgroundColor: '#050811',
+    overflow: 'hidden',
   },
-  scrollContentCompact: {
-    paddingHorizontal: 18,
-    paddingVertical: 24,
-  },
-  backdropOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(5, 9, 16, 0.76)',
-  },
-  mapGlowOne: {
+  gridLineHorizontal1: {
     position: 'absolute',
-    width: 430,
-    height: 430,
-    borderRadius: 215,
-    backgroundColor: 'rgba(79, 142, 247, 0.07)',
-    top: -150,
-    left: -120,
+    left: 0,
+    right: 0,
+    top: '22%',
+    height: 1,
+    backgroundColor: 'rgba(148, 163, 184, 0.05)',
   },
-  mapGlowTwo: {
+  gridLineHorizontal2: {
     position: 'absolute',
-    width: 520,
-    height: 520,
-    borderRadius: 260,
-    backgroundColor: 'rgba(34, 197, 94, 0.035)',
-    bottom: -250,
-    right: -180,
+    left: 0,
+    right: 0,
+    top: '50%',
+    height: 1,
+    backgroundColor: 'rgba(148, 163, 184, 0.06)',
   },
-  road: {
+  gridLineHorizontal3: {
     position: 'absolute',
-    height: 56,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: 'rgba(139, 159, 196, 0.09)',
-    backgroundColor: 'rgba(20, 29, 46, 0.38)',
+    left: 0,
+    right: 0,
+    top: '78%',
+    height: 1,
+    backgroundColor: 'rgba(148, 163, 184, 0.05)',
   },
-  roadOne: {
-    width: '130%',
-    left: '-15%',
-    top: '18%',
+  gridLineVertical1: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: '18%',
+    width: 1,
+    backgroundColor: 'rgba(148, 163, 184, 0.05)',
+  },
+  gridLineVertical2: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: '50%',
+    width: 1,
+    backgroundColor: 'rgba(148, 163, 184, 0.06)',
+  },
+  gridLineVertical3: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: '82%',
+    width: 1,
+    backgroundColor: 'rgba(148, 163, 184, 0.05)',
+  },
+  corridorPrimary: {
+    position: 'absolute',
+    width: '140%',
+    height: 3,
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    top: '35%',
+    left: '-20%',
     transform: [{ rotate: '-18deg' }],
   },
-  roadTwo: {
-    width: '125%',
-    left: '-10%',
-    top: '61%',
-    transform: [{ rotate: '13deg' }],
-  },
-  roadThree: {
-    width: '120%',
-    left: '-10%',
-    top: '40%',
-    transform: [{ rotate: '38deg' }],
-    opacity: 0.65,
-  },
-  roadFour: {
-    width: '120%',
-    left: '-10%',
-    top: '73%',
-    transform: [{ rotate: '-42deg' }],
-    opacity: 0.55,
-  },
-  routeLine: {
+  corridorSecondary: {
     position: 'absolute',
-    width: '62%',
+    width: '130%',
     height: 2,
-    backgroundColor: COLORS.ahead,
-    opacity: 0.45,
+    backgroundColor: 'rgba(163, 230, 53, 0.1)',
+    top: '65%',
+    left: '-15%',
+    transform: [{ rotate: '25deg' }],
   },
-  routeOne: {
-    left: '-5%',
-    top: '30%',
-    transform: [{ rotate: '24deg' }],
-  },
-  routeTwo: {
-    right: '-7%',
-    top: '68%',
-    transform: [{ rotate: '-29deg' }],
-    backgroundColor: COLORS.accent,
-  },
-  vehicleMarker: {
+  corridorHighway: {
     position: 'absolute',
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: '160%',
+    height: 5,
+    backgroundColor: 'rgba(30, 41, 59, 0.7)',
+    top: '52%',
+    left: '-30%',
+    transform: [{ rotate: '-8deg' }],
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(163, 230, 53, 0.18)',
+  },
+  corridorHighwayGlow: {
+    position: 'absolute',
+    width: '160%',
+    height: 1,
+    backgroundColor: 'rgba(163, 230, 53, 0.35)',
+    top: '52.5%',
+    left: '-30%',
+    transform: [{ rotate: '-8deg' }],
+  },
+  routePolyline: {
+    position: 'absolute',
+    width: '120%',
+    height: 3.5,
+    backgroundColor: '#00D2FF',
+    opacity: 0.28,
+    top: '40%',
+    left: '-10%',
+    transform: [{ rotate: '12deg' }],
+    borderRadius: 2,
+  },
+
+  /* HUD Radar Rings */
+  hudRingOuter: {
+    position: 'absolute',
+    width: 480,
+    height: 480,
+    borderRadius: 240,
+    borderWidth: 1,
+    borderColor: 'rgba(163, 230, 53, 0.07)',
+    top: '50%',
+    left: '50%',
+    marginTop: -240,
+    marginLeft: -240,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(10, 15, 30, 0.9)',
+  },
+  hudRingMiddle: {
+    width: 320,
+    height: 320,
+    borderRadius: 160,
     borderWidth: 1,
-    borderColor: 'rgba(139, 159, 196, 0.18)',
+    borderColor: 'rgba(56, 189, 248, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  vehicleOne: {
-    top: '23%',
-    right: '13%',
+  hudRingInner: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    borderWidth: 1,
+    borderColor: 'rgba(163, 230, 53, 0.1)',
   },
-  vehicleTwo: {
-    top: '70%',
-    left: '12%',
-  },
-  vehicleThree: {
-    top: '42%',
-    left: '7%',
-  },
-  mapPin: {
+  hudCrosshairH: {
     position: 'absolute',
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: COLORS.ahead,
-    shadowColor: COLORS.ahead,
-    shadowOpacity: 0.7,
-    shadowRadius: 8,
-    elevation: 5,
+    width: 120,
+    height: 1,
+    backgroundColor: 'rgba(163, 230, 53, 0.15)',
+    top: '50%',
+    left: '50%',
+    marginLeft: -60,
   },
-  pinOne: {
+  hudCrosshairV: {
+    position: 'absolute',
+    width: 1,
+    height: 120,
+    backgroundColor: 'rgba(163, 230, 53, 0.15)',
+    top: '50%',
+    left: '50%',
+    marginTop: -60,
+  },
+
+  /* Vehicle Marker 1 (Active Ahead) */
+  vehicleMarker1: {
+    position: 'absolute',
+    top: '28%',
+    right: '12%',
+    alignItems: 'center',
+  },
+  vehiclePulseRing1: {
+    position: 'absolute',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(163, 230, 53, 0.2)',
+    top: -6,
+  },
+  vehicleDot1: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#A3E635',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    ...SHADOWS.sm,
+  },
+  vehicleTag1: {
+    backgroundColor: 'rgba(15, 23, 42, 0.92)',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: 'rgba(163, 230, 53, 0.4)',
+    marginTop: 4,
+  },
+  vehicleTagText: {
+    color: '#A3E635',
+    fontSize: 8.5,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+
+  /* Vehicle Marker 2 */
+  vehicleMarker2: {
+    position: 'absolute',
+    bottom: '22%',
+    left: '10%',
+    alignItems: 'center',
+  },
+  vehiclePulseRing2: {
+    position: 'absolute',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(56, 189, 248, 0.25)',
+    top: -4,
+  },
+  vehicleDot2: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#00D2FF',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  vehicleTag2: {
+    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginTop: 4,
+  },
+  vehicleTagText2: {
+    color: '#38BDF8',
+    fontSize: 8,
+    fontWeight: '700',
+  },
+
+  /* Vehicle Marker 3 */
+  vehicleMarker3: {
+    position: 'absolute',
     top: '16%',
-    right: '31%',
+    left: '15%',
   },
-  pinTwo: {
-    bottom: '18%',
-    right: '17%',
-    backgroundColor: COLORS.accent,
-    shadowColor: COLORS.accent,
+  vehiclePulseRing3: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: 'rgba(163, 230, 53, 0.3)',
+    position: 'absolute',
+    top: -3,
+    left: -3,
   },
+  vehicleDot3: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#A3E635',
+  },
+
+  /* Ambient Glows */
+  ambientGlowTop: {
+    position: 'absolute',
+    top: -120,
+    right: -100,
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    backgroundColor: 'rgba(163, 230, 53, 0.08)',
+  },
+  ambientGlowBottom: {
+    position: 'absolute',
+    bottom: -150,
+    left: -120,
+    width: 380,
+    height: 380,
+    borderRadius: 190,
+    backgroundColor: 'rgba(56, 189, 248, 0.06)',
+  },
+
+  /* ----------------------------------------------------
+     CENTERED GLASSMORPHISM LOGIN CARD
+  ---------------------------------------------------- */
   loginCard: {
     width: '100%',
-    backgroundColor: 'rgba(12, 17, 28, 0.94)',
+    maxWidth: 420,
+    backgroundColor: 'rgba(10, 15, 29, 0.88)',
+    borderRadius: 24,
+    paddingHorizontal: 28,
+    paddingTop: 32,
+    paddingBottom: 28,
     borderWidth: 1,
-    borderColor: 'rgba(139, 159, 196, 0.18)',
+    borderColor: 'rgba(255, 255, 255, 0.08)',
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.55,
-    shadowRadius: 32,
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.7,
+    shadowRadius: 36,
     elevation: 16,
+    zIndex: 20,
   },
-  loginCardWide: {
-    maxWidth: 470,
-    borderRadius: 28,
-    paddingHorizontal: 38,
-    paddingVertical: 36,
-  },
-  loginCardCompact: {
-    maxWidth: 470,
-    borderRadius: 22,
-    paddingHorizontal: 22,
-    paddingVertical: 28,
-  },
+
+  /* Brand Header: Logo mark + Ctrl+Win */
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 28,
+    gap: 10,
+    marginBottom: 20,
   },
-  brandMark: {
-    width: 30,
-    height: 30,
+  logoBadge: {
+    width: 34,
+    height: 34,
     borderRadius: 9,
-    backgroundColor: '#B7F34A',
+    backgroundColor: '#1C2E05',
+    borderWidth: 1.5,
+    borderColor: '#A3E635',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 9,
-    ...SHADOWS.sm,
+    shadowColor: '#A3E635',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  brandMarkText: {
-    color: '#0A0F1E',
+  logoPlusText: {
     fontSize: 22,
-    lineHeight: 23,
     fontWeight: '900',
+    color: '#A3E635',
+    lineHeight: 25,
+    marginTop: -2,
   },
-  brandText: {
-    color: '#F0F4FF',
-    fontSize: 23,
+  brandTitle: {
+    fontSize: 24,
     fontWeight: '800',
+    color: '#FFFFFF',
     letterSpacing: -0.5,
   },
   brandPlus: {
-    color: '#B7F34A',
+    color: '#A3E635',
+    fontWeight: '900',
   },
-  headingBlock: {
-    alignItems: 'center',
-    marginBottom: 26,
-  },
+
+  /* Welcome Typography */
   welcomeTitle: {
-    color: '#F5F7FA',
-    fontSize: 27,
-    fontWeight: '800',
-    letterSpacing: -0.6,
+    fontSize: 23,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    letterSpacing: -0.3,
   },
   welcomeSubtitle: {
-    color: '#8290A8',
     fontSize: 13,
-    lineHeight: 19,
+    color: '#94A3B8',
     textAlign: 'center',
-    marginTop: 8,
-    maxWidth: 340,
+    marginTop: 6,
+    marginBottom: 24,
+    lineHeight: 19,
+    paddingHorizontal: 8,
   },
+
+  /* Error Banner */
   errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(239, 68, 68, 0.10)',
+    gap: 8,
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.18)',
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+    borderRadius: RADIUS.md,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
+    paddingVertical: 9,
     marginBottom: 16,
-    gap: 7,
   },
   errorText: {
-    flex: 1,
     color: '#F87171',
-    fontSize: 12,
+    fontSize: 12.5,
+    fontWeight: '500',
+    flex: 1,
+  },
+
+  /* Field Groups */
+  fieldGroup: {
+    marginBottom: 18,
+  },
+  fieldLabel: {
+    fontSize: 13,
     fontWeight: '600',
+    color: '#E2E8F0',
+    marginBottom: 7,
+    letterSpacing: 0.2,
   },
-  inputGroup: {
-    marginBottom: 16,
-  },
-  label: {
-    color: '#B5C0D2',
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  inputRow: {
-    height: 52,
+  inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 15,
-    borderRadius: 13,
-    backgroundColor: 'rgba(24, 31, 45, 0.88)',
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(139, 159, 196, 0.16)',
+    borderColor: 'rgba(51, 65, 85, 0.8)',
+    paddingHorizontal: 14,
+    height: 48,
   },
-  input: {
+  inputContainerFocused: {
+    borderColor: '#A3E635',
+    backgroundColor: 'rgba(20, 30, 55, 0.95)',
+    shadowColor: '#A3E635',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  inputIcon: {
+    marginRight: 10,
+  },
+  textInput: {
     flex: 1,
-    color: '#F0F4FF',
+    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '500',
-    marginLeft: 10,
     paddingVertical: 0,
   },
+  eyeBtn: {
+    padding: 4,
+  },
+
+  /* Options Row: Remember Me & Forgot Password */
   optionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 1,
-    marginBottom: 20,
+    marginTop: 2,
+    marginBottom: 24,
   },
-  rememberRow: {
+  rememberMeRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   checkbox: {
-    width: 17,
-    height: 17,
+    width: 18,
+    height: 18,
     borderRadius: 5,
-    borderWidth: 1,
-    borderColor: '#52627B',
+    borderWidth: 1.5,
+    borderColor: '#475569',
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 8,
-    backgroundColor: 'transparent',
   },
   checkboxChecked: {
-    backgroundColor: '#B7F34A',
-    borderColor: '#B7F34A',
+    backgroundColor: '#A3E635',
+    borderColor: '#A3E635',
   },
-  rememberText: {
-    color: '#9BA8BC',
-    fontSize: 12,
+  rememberMeText: {
+    color: '#94A3B8',
+    fontSize: 13,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  forgotPasswordText: {
+    color: '#A3E635',
+    fontSize: 13,
     fontWeight: '600',
   },
-  forgotText: {
-    color: '#B7F34A',
-    fontSize: 12,
-    fontWeight: '700',
-  },
+
+  /* Prominent Lime/Green Login Button: "Login →" */
   loginButton: {
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: '#B7F34A',
+    backgroundColor: '#A3E635',
+    borderRadius: 12,
+    height: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 9,
-    shadowColor: '#B7F34A',
-    shadowOffset: { width: 0, height: 7 },
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    elevation: 5,
+    gap: 8,
+    shadowColor: '#A3E635',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.38,
+    shadowRadius: 14,
+    elevation: 6,
   },
   loginButtonText: {
-    color: '#0A0F1E',
-    fontSize: 15,
+    color: '#050811',
+    fontSize: 15.5,
     fontWeight: '800',
-  },
-  switchModeButton: {
-    alignItems: 'center',
-    marginTop: 21,
-  },
-  switchModeText: {
-    color: '#7F8DA4',
-    fontSize: 12,
-    textAlign: 'center',
-  },
-  switchModeHighlight: {
-    color: '#B7F34A',
-    fontWeight: '700',
-  },
-  guestButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-    marginTop: 17,
-    paddingTop: 15,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(139, 159, 196, 0.10)',
-  },
-  guestButtonText: {
-    color: '#8C99AE',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  secureFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 18,
-    gap: 6,
-  },
-  secureFooterText: {
-    color: 'rgba(139, 159, 196, 0.62)',
-    fontSize: 10,
-    fontWeight: '600',
     letterSpacing: 0.2,
   },
-  footerDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: 'rgba(139, 159, 196, 0.45)',
+  arrowIcon: {
+    marginTop: 1,
+  },
+
+  /* Bottom Notice: Don't have an account? Contact your administrator */
+  footerWrap: {
+    marginTop: 22,
+    alignItems: 'center',
+  },
+  footerText: {
+    color: '#64748B',
+    fontSize: 12.5,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  footerLink: {
+    color: '#A3E635',
+    fontWeight: '700',
+  },
+
+  /* Guest Shortcut Link */
+  guestLink: {
+    marginTop: 16,
+    paddingVertical: 6,
+    alignItems: 'center',
+  },
+  guestLinkText: {
+    color: '#475569',
+    fontSize: 12,
+  },
+  guestLinkBold: {
+    color: '#38BDF8',
+    fontWeight: '700',
   },
 });

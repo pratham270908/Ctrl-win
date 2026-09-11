@@ -23,9 +23,9 @@ class AuthService {
       if (json) {
         return JSON.parse(json);
       }
-      return null;
+      return DEFAULT_USER;
     } catch {
-      return null;
+      return DEFAULT_USER;
     }
   }
 

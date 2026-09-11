@@ -17,6 +17,10 @@ export const API_CONFIG = {
     process.env.EXPO_PUBLIC_GOOGLE_GEOCODING_API_KEY ||
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
     '',
+  mapboxApiKey:
+    process.env.EXPO_PUBLIC_MAPBOX_API_KEY ||
+    process.env.MAPBOX_ACCESS_TOKEN ||
+    '',
 
   hasPlacesApi(): boolean {
     return Boolean(this.placesApiKey && this.placesApiKey.trim().length > 0);
@@ -28,5 +32,9 @@ export const API_CONFIG = {
 
   hasGeocodingApi(): boolean {
     return Boolean(this.geocodingApiKey && this.geocodingApiKey.trim().length > 0);
+  },
+
+  hasMapboxApi(): boolean {
+    return Boolean(this.mapboxApiKey && this.mapboxApiKey.trim().length > 0);
   },
 };
