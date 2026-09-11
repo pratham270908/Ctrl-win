@@ -26,7 +26,7 @@ export const Header: React.FC<HeaderProps> = ({
       <View style={styles.left}>
         <Text style={styles.greeting}>{finalGreeting}</Text>
         <View style={styles.locationRow}>
-          <Ionicons name="location-sharp" size={14} color={COLORS.accent} />
+          <Ionicons name="location-sharp" size={13} color={COLORS.accent} />
           <Text style={styles.subtitle} numberOfLines={1}>
             {subtitle}
           </Text>
@@ -40,7 +40,7 @@ export const Header: React.FC<HeaderProps> = ({
           activeOpacity={0.7}
           accessibilityLabel="Notifications"
         >
-          <Ionicons name="notifications-outline" size={22} color={COLORS.primary} />
+          <Ionicons name="notifications-outline" size={20} color={COLORS.textPrimary} />
           <View style={styles.badgeDot} />
         </TouchableOpacity>
 
@@ -54,7 +54,7 @@ export const Header: React.FC<HeaderProps> = ({
             <Image source={{ uri: user.avatar }} style={styles.avatar} />
           ) : (
             <View style={styles.avatarPlaceholder}>
-              <Ionicons name="person" size={18} color={COLORS.primary} />
+              <Ionicons name="person" size={17} color={COLORS.accent} />
             </View>
           )}
         </TouchableOpacity>
@@ -69,8 +69,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.sm,
+    paddingTop: 10,
+    paddingBottom: 6,
     backgroundColor: COLORS.background,
   },
   left: {
@@ -78,30 +78,30 @@ const styles = StyleSheet.create({
     marginRight: SPACING.md,
   },
   greeting: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: COLORS.primary,
-    letterSpacing: -0.3,
+    fontSize: 21,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    letterSpacing: -0.4,
   },
   locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 2,
+    marginTop: 3,
   },
   subtitle: {
     fontSize: 12,
     color: COLORS.textSecondary,
-    marginLeft: 4,
+    marginLeft: 3,
     fontWeight: '500',
   },
   rightActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
+    gap: 8,
   },
   iconButton: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     borderRadius: RADIUS.full,
     backgroundColor: COLORS.cardBg,
     alignItems: 'center',
@@ -113,21 +113,21 @@ const styles = StyleSheet.create({
   },
   badgeDot: {
     position: 'absolute',
-    top: 9,
-    right: 9,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    top: 8,
+    right: 8,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
     backgroundColor: COLORS.danger,
     borderWidth: 1.5,
-    borderColor: COLORS.cardBg,
+    borderColor: '#FFFFFF',
   },
   avatarButton: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     borderRadius: RADIUS.full,
     overflow: 'hidden',
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: COLORS.accent,
     ...SHADOWS.sm,
   },

@@ -35,8 +35,8 @@ const TABS: TabItem[] = [
   {
     id: 'activity',
     label: 'Activity',
-    activeIcon: 'document-text',
-    inactiveIcon: 'document-text-outline',
+    activeIcon: 'compass',
+    inactiveIcon: 'compass-outline',
   },
   {
     id: 'profile',
@@ -54,7 +54,14 @@ export const CustomBottomNav: React.FC<CustomBottomNavProps> = ({
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={[styles.navBar, { paddingBottom: Math.max(SPACING.md, insets.bottom) }]}>
+    <View
+      style={[
+        styles.navBar,
+        {
+          paddingBottom: Math.max(10, insets.bottom),
+        },
+      ]}
+    >
       {TABS.map((tab) => {
         const isActive = currentTab === tab.id;
         const favCount = Array.isArray(favorites) ? favorites.length : 0;
@@ -65,15 +72,15 @@ export const CustomBottomNav: React.FC<CustomBottomNavProps> = ({
             key={tab.id}
             style={styles.tabButton}
             onPress={() => onSelectTab(tab.id)}
-            activeOpacity={0.7}
+            activeOpacity={0.75}
             accessibilityRole="tab"
             accessibilityState={{ selected: isActive }}
             accessibilityLabel={tab.label}
           >
-            <View style={styles.iconContainer}>
+            <View style={[styles.iconWrapper, isActive && styles.iconWrapperActive]}>
               <Ionicons
                 name={(isActive ? tab.activeIcon : tab.inactiveIcon) as any}
-                size={24}
+                size={22}
                 color={isActive ? COLORS.accent : COLORS.textMuted}
               />
               {showBadge && (
@@ -88,11 +95,10 @@ export const CustomBottomNav: React.FC<CustomBottomNavProps> = ({
                 styles.tabLabel,
                 isActive ? styles.tabLabelActive : styles.tabLabelInactive,
               ]}
+              numberOfLines={1}
             >
               {tab.label}
             </Text>
-
-            {isActive && <View style={styles.activeDot} />}
           </TouchableOpacity>
         );
       })}
@@ -106,57 +112,61 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-around',
     backgroundColor: COLORS.cardBg,
-    paddingTop: SPACING.sm,
-    paddingBottom: SPACING.md,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: COLORS.cardBorder,
-    ...SHADOWS.lg,
+    ...SHADOWS.md,
   },
   tabButton: {
     alignItems: 'center',
+    justifyContent: 'center',
     flex: 1,
+    minHeight: 50,
     paddingVertical: 2,
   },
-  iconContainer: {
+  iconWrapper: {
     position: 'relative',
-    height: 28,
+    height: 32,
+    paddingHorizontal: 16,
+    borderRadius: RADIUS.full,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  iconWrapperActive: {
+    backgroundColor: COLORS.accentLight,
   },
   badge: {
     position: 'absolute',
-    top: -3,
-    right: -10,
+    top: -2,
+    right: 6,
     backgroundColor: COLORS.danger,
     borderRadius: 8,
-    paddingHorizontal: 5,
+    paddingHorizontal: 4,
     paddingVertical: 1,
     minWidth: 16,
+    height: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
   },
   badgeText: {
     color: '#FFFFFF',
     fontSize: 9,
     fontWeight: '800',
+    lineHeight: 11,
   },
   tabLabel: {
     fontSize: 11,
-    marginTop: 2,
-    fontWeight: '500',
+    marginTop: 3,
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
   tabLabelActive: {
     color: COLORS.accent,
     fontWeight: '700',
   },
   tabLabelInactive: {
-    color: COLORS.textMuted,
-  },
-  activeDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: COLORS.accent,
-    marginTop: 2,
+    color: COLORS.textSecondary,
   },
 });

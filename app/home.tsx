@@ -327,7 +327,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             activeOpacity={0.8}
           >
             <View style={[styles.shortcutIconCircle, { backgroundColor: COLORS.accent }]}>
-              <Ionicons name="body" size={18} color="#FFFFFF" />
+              <Ionicons name="accessibility" size={18} color="#FFFFFF" />
             </View>
             <Text style={[styles.shortcutTitle, { color: COLORS.accent }]}>Accessible</Text>
             <Text style={styles.shortcutSub}>No-Stair Routes</Text>
@@ -379,11 +379,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               contentContainerStyle={styles.filterPillsRow}
             >
               {[
-                { id: 'ALL', label: 'All Useful' },
-                { id: 'AHEAD_ONLY', label: 'Ahead Only 🎯' },
-                { id: 'OPEN_NOW', label: 'Open Now 🟢' },
-                { id: 'TOP_RATED', label: '★ 4.5+ Rating' },
-                { id: 'UNDER_1KM', label: '< 1 km Close' },
+                { id: 'ALL', label: 'All Useful', icon: 'sparkles' },
+                { id: 'AHEAD_ONLY', label: 'Ahead Only', icon: 'compass' },
+                { id: 'OPEN_NOW', label: 'Open Now', icon: 'time' },
+                { id: 'TOP_RATED', label: '4.5+ Rating', icon: 'star' },
+                { id: 'UNDER_1KM', label: '< 1 km Close', icon: 'navigate' },
               ].map((pill) => {
                 const isActive = activeFilter === pill.id;
                 return (
@@ -393,6 +393,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     onPress={() => handleFilterChange(pill.id as any)}
                     activeOpacity={0.7}
                   >
+                    <Ionicons
+                      name={pill.icon as any}
+                      size={13}
+                      color={isActive ? '#FFFFFF' : COLORS.textSecondary}
+                    />
                     <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
                       {pill.label}
                     </Text>
@@ -611,22 +616,25 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   filterPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    height: 34,
     paddingHorizontal: 12,
-    paddingVertical: 6,
     borderRadius: RADIUS.full,
     backgroundColor: COLORS.cardBg,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: COLORS.cardBorder,
     ...SHADOWS.sm,
   },
   filterPillActive: {
-    backgroundColor: COLORS.accent,
-    borderColor: COLORS.accent,
+    backgroundColor: COLORS.primaryDark,
+    borderColor: COLORS.primaryDark,
   },
   filterPillText: {
     fontSize: 12,
     fontWeight: '600',
-    color: COLORS.textSecondary,
+    color: COLORS.textPrimary,
   },
   filterPillTextActive: {
     color: '#FFFFFF',

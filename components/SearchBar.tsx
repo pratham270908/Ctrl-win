@@ -24,22 +24,21 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   editable = true,
   autoFocus = false,
 }) => {
-  // If not editable (e.g. on Home screen), tap triggers onPress navigation
   if (!editable) {
     return (
       <TouchableOpacity
         style={styles.container}
         onPress={onPress}
-        activeOpacity={0.85}
+        activeOpacity={0.8}
         accessibilityRole="button"
         accessibilityLabel="Search places ahead"
       >
-        <Ionicons name="search" size={20} color={COLORS.accent} style={styles.searchIcon} />
+        <Ionicons name="search" size={18} color={COLORS.accent} style={styles.searchIcon} />
         <Text style={styles.placeholderText} numberOfLines={1}>
           {placeholder}
         </Text>
         <View style={styles.filterChip}>
-          <Ionicons name="compass-outline" size={14} color={COLORS.accent} />
+          <Ionicons name="compass" size={12} color={COLORS.accent} />
           <Text style={styles.filterChipText}>Ahead</Text>
         </View>
       </TouchableOpacity>
@@ -48,7 +47,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
   return (
     <View style={styles.container}>
-      <Ionicons name="search" size={20} color={COLORS.accent} style={styles.searchIcon} />
+      <Ionicons name="search" size={18} color={COLORS.accent} style={styles.searchIcon} />
       <TextInput
         style={styles.input}
         value={value}
@@ -67,7 +66,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           onPress={onClear}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="close-circle" size={18} color={COLORS.textMuted} />
+          <Ionicons name="close-circle" size={17} color={COLORS.textMuted} />
         </TouchableOpacity>
       )}
     </View>
@@ -80,27 +79,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: COLORS.cardBg,
     borderRadius: RADIUS.xl,
-    paddingHorizontal: SPACING.lg,
-    height: 52,
+    paddingHorizontal: 14,
+    height: 48,
     borderWidth: 1.5,
     borderColor: COLORS.cardBorder,
-    ...SHADOWS.md,
+    ...SHADOWS.sm,
     marginHorizontal: SPACING.lg,
-    marginVertical: SPACING.sm,
+    marginVertical: 6,
   },
   searchIcon: {
-    marginRight: SPACING.sm,
+    marginRight: 10,
   },
   input: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 14,
     color: COLORS.textPrimary,
     fontWeight: '500',
     paddingVertical: 0,
   },
   placeholderText: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 14,
     color: COLORS.textMuted,
     fontWeight: '500',
   },
@@ -108,17 +107,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.accentLight,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
     borderRadius: RADIUS.full,
     gap: 4,
   },
   filterChipText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
     color: COLORS.accent,
   },
   clearButton: {
-    padding: 4,
+    padding: 3,
   },
 });

@@ -1,6 +1,5 @@
 import React from 'react';
 import { Text, StyleSheet, TouchableOpacity, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { CategoryInfo } from '../data/mockCategories';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
 
@@ -30,7 +29,7 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
         style={[
           styles.iconContainer,
           { backgroundColor: category.bgColor },
-          isSelected && { backgroundColor: category.color },
+          isSelected && { backgroundColor: category.color, borderColor: category.color },
         ]}
       >
         <Text style={styles.emoji}>{category.emoji}</Text>
@@ -51,31 +50,32 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    marginRight: SPACING.md,
-    width: 72,
+    marginRight: 14,
+    width: 66,
   },
   containerSelected: {
-    transform: [{ scale: 1.05 }],
+    transform: [{ scale: 1.04 }],
   },
   iconContainer: {
-    width: 58,
-    height: 58,
-    borderRadius: 20,
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: 'transparent',
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
     ...SHADOWS.sm,
-    marginBottom: 6,
+    marginBottom: 5,
   },
   emoji: {
-    fontSize: 26,
+    fontSize: 24,
   },
   name: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '600',
     color: COLORS.textPrimary,
     textAlign: 'center',
+    letterSpacing: -0.1,
   },
   nameSelected: {
     color: COLORS.accent,

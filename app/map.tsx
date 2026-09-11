@@ -61,10 +61,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           contentContainerStyle={styles.filterScroll}
         >
           {[
-            { id: 'ALL' as const, name: 'All Ahead' },
-            { id: 'Coffee' as const, name: 'Coffee', emoji: '☕' },
-            { id: 'Petrol' as const, name: 'Petrol', emoji: '⛽' },
-            { id: 'ATM' as const, name: 'ATM', emoji: '🏧' },
+            { id: 'ALL' as const, name: 'All Ahead', icon: 'compass', iconColor: COLORS.ahead },
+            { id: 'Coffee' as const, name: 'Coffee', icon: 'cafe', iconColor: '#8B5CF6' },
+            { id: 'Petrol' as const, name: 'Petrol', icon: 'car', iconColor: '#F59E0B' },
+            { id: 'ATM' as const, name: 'ATM', icon: 'card', iconColor: '#3B82F6' },
           ].map((cat) => {
             const isActive = activeCategory === cat.id;
             return (
@@ -74,7 +74,11 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 onPress={() => setActiveCategory(cat.id)}
                 activeOpacity={0.75}
               >
-                {'emoji' in cat && <Text style={styles.chipEmoji}>{cat.emoji}</Text>}
+                <Ionicons
+                  name={cat.icon as any}
+                  size={14}
+                  color={isActive ? '#FFFFFF' : cat.iconColor}
+                />
                 <Text
                   style={[styles.filterChipText, isActive && styles.filterChipTextActive]}
                 >
@@ -135,37 +139,36 @@ const styles = StyleSheet.create({
   },
   topFilterBar: {
     backgroundColor: COLORS.cardBg,
-    paddingVertical: SPACING.sm,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.cardBorder,
     zIndex: 10,
+    ...SHADOWS.sm,
   },
   filterScroll: {
     paddingHorizontal: SPACING.lg,
-    gap: SPACING.xs,
+    gap: SPACING.sm,
   },
   filterChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    height: 38,
+    paddingHorizontal: 14,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surfaceLight,
-    borderWidth: 1,
+    backgroundColor: COLORS.cardBg,
+    borderWidth: 1.5,
     borderColor: COLORS.cardBorder,
-    gap: 4,
+    gap: 6,
   },
   filterChipActive: {
-    backgroundColor: COLORS.accent,
-    borderColor: COLORS.accent,
-  },
-  chipEmoji: {
-    fontSize: 14,
+    backgroundColor: COLORS.primaryDark,
+    borderColor: COLORS.primaryDark,
+    ...SHADOWS.sm,
   },
   filterChipText: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: '600',
-    color: COLORS.textSecondary,
+    color: COLORS.textPrimary,
   },
   filterChipTextActive: {
     color: '#FFFFFF',

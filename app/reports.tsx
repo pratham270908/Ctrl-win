@@ -134,8 +134,8 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({ onBack, onSelectSe
           activeOpacity={0.8}
         >
           <Ionicons
-            name="navigate-circle-outline"
-            size={16}
+            name="navigate"
+            size={14}
             color={activeTab === 'routes' ? '#FFFFFF' : COLORS.textSecondary}
           />
           <Text style={[styles.segmentText, activeTab === 'routes' && styles.segmentTextActive]}>
@@ -149,8 +149,8 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({ onBack, onSelectSe
           activeOpacity={0.8}
         >
           <Ionicons
-            name="search-outline"
-            size={16}
+            name="search"
+            size={14}
             color={activeTab === 'searches' ? '#FFFFFF' : COLORS.textSecondary}
           />
           <Text style={[styles.segmentText, activeTab === 'searches' && styles.segmentTextActive]}>
@@ -164,8 +164,8 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({ onBack, onSelectSe
           activeOpacity={0.8}
         >
           <Ionicons
-            name="flag-outline"
-            size={16}
+            name="flag"
+            size={14}
             color={activeTab === 'reports' ? '#FFFFFF' : COLORS.textSecondary}
           />
           <Text style={[styles.segmentText, activeTab === 'reports' && styles.segmentTextActive]}>

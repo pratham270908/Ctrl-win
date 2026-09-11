@@ -13,6 +13,17 @@ interface PlaceCardProps {
   compact?: boolean;
 }
 
+const getCategoryIcon = (category: string): any => {
+  const cat = category.toLowerCase();
+  if (cat.includes('coffee') || cat.includes('cafe')) return 'cafe-outline';
+  if (cat.includes('petrol') || cat.includes('fuel') || cat.includes('ev')) return 'car-outline';
+  if (cat.includes('atm') || cat.includes('bank')) return 'card-outline';
+  if (cat.includes('restaurant') || cat.includes('food')) return 'restaurant-outline';
+  if (cat.includes('hospital') || cat.includes('health')) return 'medkit-outline';
+  if (cat.includes('pharmacy')) return 'medical-outline';
+  return 'location-outline';
+};
+
 export const PlaceCard: React.FC<PlaceCardProps> = ({
   place,
   onPress,
@@ -25,6 +36,7 @@ export const PlaceCard: React.FC<PlaceCardProps> = ({
 
   const favorite = isFavorite(place.id);
   const badgeInfo = getDirectionBadgeInfo(place.direction, place.routeDeviation);
+  const categoryIcon = getCategoryIcon(place.category);
 
   const formatDistance = (meters?: number): string => {
     const m = meters ?? 0;
@@ -42,7 +54,7 @@ export const PlaceCard: React.FC<PlaceCardProps> = ({
       accessibilityRole="button"
       accessibilityLabel={`${place.name || 'Place'}, ${badgeInfo.label}`}
     >
-      {/* Top row: Directional Badge & Favorite Button */}
+      {/* Header Row: Direction Badge & Favorite Heart */}
       <View style={styles.headerRow}>
         <View style={[styles.directionBadge, { backgroundColor: badgeInfo.bgColor }]}>
           <Ionicons
@@ -56,7 +68,7 @@ export const PlaceCard: React.FC<PlaceCardProps> = ({
           </Text>
           {(place.routeDeviation ?? 0) > 0 && place.direction === 'ON_ROUTE' && (
             <Text style={[styles.deviationText, { color: badgeInfo.color }]}>
-              • +{place.routeDeviation}m
+              • +{place.routeDeviation}m detour
             </Text>
           )}
         </View>
@@ -64,7 +76,7 @@ export const PlaceCard: React.FC<PlaceCardProps> = ({
         <TouchableOpacity
           style={styles.favButton}
           onPress={() => toggleFavorite(place)}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           accessibilityLabel={favorite ? 'Remove from saved' : 'Save place'}
         >
           <Ionicons
@@ -75,16 +87,20 @@ export const PlaceCard: React.FC<PlaceCardProps> = ({
         </TouchableOpacity>
       </View>
 
-      {/* Place Name and Category */}
-      <View style={styles.titleRow}>
+      {/* Place Title & Category */}
+      <View style={styles.titleSection}>
         <Text style={styles.placeName} numberOfLines={1}>
           {place.name}
         </Text>
+        <View style={styles.categoryRow}>
+          <Ionicons name={categoryIcon} size={12} color={COLORS.textSecondary} />
+          <Text style={styles.categoryText}>{place.category}</Text>
+          <View style={styles.inlineDot} />
+          <Text style={styles.addressText} numberOfLines={1}>
+            {place.address}
+          </Text>
+        </View>
       </View>
-
-      <Text style={styles.addressText} numberOfLines={1}>
-        {place.address}
-      </Text>
 
       {/* Metrics Row: Rating, Distance, Travel Time, Status */}
       <View style={styles.metricsRow}>
@@ -94,21 +110,21 @@ export const PlaceCard: React.FC<PlaceCardProps> = ({
           <Text style={styles.reviewCount}>({place.reviewCount ?? 0})</Text>
         </View>
 
-        <View style={styles.dotSeparator} />
+        <View style={styles.metricSeparator} />
 
         <View style={styles.metricItem}>
           <Ionicons name="navigate-outline" size={13} color={COLORS.textSecondary} />
           <Text style={styles.metricText}>{formatDistance(place.distance)}</Text>
         </View>
 
-        <View style={styles.dotSeparator} />
+        <View style={styles.metricSeparator} />
 
         <View style={styles.metricItem}>
           <Ionicons name="time-outline" size={13} color={COLORS.textSecondary} />
           <Text style={styles.metricText}>{place.travelTime} min</Text>
         </View>
 
-        <View style={styles.dotSeparator} />
+        <View style={styles.metricSeparator} />
 
         <View
           style={[
@@ -116,41 +132,67 @@ export const PlaceCard: React.FC<PlaceCardProps> = ({
             place.status === 'OPEN' ? styles.statusOpen : styles.statusClosed,
           ]}
         >
+          <View
+            style={[
+              styles.statusDot,
+              { backgroundColor: place.status === 'OPEN' ? COLORS.ahead : COLORS.danger },
+            ]}
+          />
           <Text
             style={[
               styles.statusText,
               place.status === 'OPEN' ? styles.statusTextOpen : styles.statusTextClosed,
             ]}
           >
-            {place.status}
+            {place.status === 'OPEN' ? 'Open' : 'Closed'}
           </Text>
         </View>
       </View>
 
-      {/* Direction Commentary */}
+      {/* Journey Relevance Commentary & Action Button */}
       <View style={styles.commentaryRow}>
-        <Text
-          style={[
-            styles.commentaryText,
-            place.direction === 'BEHIND' && { color: COLORS.behind, fontWeight: '600' },
-          ]}
-          numberOfLines={1}
-        >
-          {place.direction === 'BEHIND'
-            ? '⚠️ Requires turning back'
-            : place.direction === 'AHEAD'
-            ? '✓ Right on your path ahead'
-            : `✓ On route (${place.routeDeviation} min stop)`}
-        </Text>
+        <View style={styles.relevanceLeft}>
+          <Ionicons
+            name={
+              place.direction === 'BEHIND'
+                ? 'warning-outline'
+                : place.direction === 'AHEAD'
+                ? 'checkmark-circle-outline'
+                : 'git-commit-outline'
+            }
+            size={13}
+            color={
+              place.direction === 'BEHIND'
+                ? COLORS.behind
+                : place.direction === 'AHEAD'
+                ? COLORS.ahead
+                : COLORS.onRoute
+            }
+          />
+          <Text
+            style={[
+              styles.commentaryText,
+              place.direction === 'BEHIND' && { color: COLORS.behind, fontWeight: '600' },
+            ]}
+            numberOfLines={1}
+          >
+            {place.direction === 'BEHIND'
+              ? 'Requires turning back'
+              : place.direction === 'AHEAD'
+              ? 'Directly ahead on your path'
+              : `On route (+${place.routeDeviation} min stop)`}
+          </Text>
+        </View>
 
         {onNavigatePress && (
           <TouchableOpacity
             style={styles.navigateAction}
             onPress={() => onNavigatePress(place)}
             activeOpacity={0.75}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
           >
             <Text style={styles.navigateActionText}>View Route</Text>
-            <Ionicons name="arrow-forward" size={14} color={COLORS.accent} />
+            <Ionicons name="arrow-forward" size={13} color={COLORS.accent} />
           </TouchableOpacity>
         )}
       </View>
@@ -162,22 +204,22 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: COLORS.cardBg,
     borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
+    padding: 14,
     marginHorizontal: SPACING.lg,
-    marginVertical: 6,
+    marginVertical: 5,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
-    ...SHADOWS.md,
+    ...SHADOWS.sm,
   },
   cardCompact: {
-    padding: SPACING.md,
-    marginVertical: 4,
+    padding: 10,
+    marginVertical: 3,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: SPACING.xs,
+    marginBottom: 6,
   },
   directionBadge: {
     flexDirection: 'row',
@@ -190,37 +232,58 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
   directionBadgeText: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '800',
     letterSpacing: 0.3,
   },
   deviationText: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '700',
-    marginLeft: 4,
+    marginLeft: 3,
   },
   favButton: {
     padding: 2,
   },
-  titleRow: {
-    marginTop: 2,
+  titleSection: {
+    marginBottom: 8,
   },
   placeName: {
-    fontSize: 16,
+    fontSize: 15.5,
     fontWeight: '700',
     color: COLORS.textPrimary,
+    letterSpacing: -0.2,
+  },
+  categoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 3,
+    gap: 4,
+  },
+  categoryText: {
+    fontSize: 11.5,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  inlineDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: COLORS.textMuted,
+    marginHorizontal: 3,
   },
   addressText: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginTop: 2,
-    marginBottom: SPACING.sm,
+    flex: 1,
+    fontSize: 11.5,
+    color: COLORS.textMuted,
   },
   metricsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
-    marginBottom: SPACING.sm,
+    backgroundColor: COLORS.surfaceLight,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: RADIUS.md,
+    marginBottom: 8,
   },
   ratingBadge: {
     flexDirection: 'row',
@@ -228,18 +291,17 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   ratingText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: COLORS.textPrimary,
   },
   reviewCount: {
-    fontSize: 11,
+    fontSize: 10.5,
     color: COLORS.textMuted,
   },
-  dotSeparator: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
+  metricSeparator: {
+    width: 1,
+    height: 12,
     backgroundColor: COLORS.cardBorder,
     marginHorizontal: 8,
   },
@@ -249,14 +311,18 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   metricText: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '600',
-    color: COLORS.textSecondary,
+    color: COLORS.textPrimary,
   },
   statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 4,
+    borderRadius: RADIUS.full,
+    gap: 4,
+    marginLeft: 'auto',
   },
   statusOpen: {
     backgroundColor: COLORS.aheadLight,
@@ -264,9 +330,14 @@ const styles = StyleSheet.create({
   statusClosed: {
     backgroundColor: '#FEE2E2',
   },
+  statusDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+  },
   statusText: {
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   statusTextOpen: {
     color: COLORS.ahead,
@@ -278,22 +349,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: SPACING.xs,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: COLORS.surfaceLight,
   },
+  relevanceLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    flex: 1,
+    marginRight: 6,
+  },
   commentaryText: {
-    fontSize: 12,
+    fontSize: 11.5,
     color: COLORS.textSecondary,
     fontWeight: '500',
   },
   navigateAction: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
+    backgroundColor: COLORS.accentLight,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: RADIUS.md,
   },
   navigateActionText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: COLORS.accent,
   },
