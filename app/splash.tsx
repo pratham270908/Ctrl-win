@@ -11,6 +11,7 @@ import {
   Easing,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { APP_CONFIG } from '../constants/config';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -25,12 +26,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
   const contentSlideAnim = useRef(new Animated.Value(24)).current;
   const ctaScaleAnim = useRef(new Animated.Value(0.92)).current;
 
-  // Continuous living nature loops
-  const waterfallFlowAnim = useRef(new Animated.Value(0)).current;
-  const waterfallFlowAnim2 = useRef(new Animated.Value(0)).current;
-  const mistDriftAnim = useRef(new Animated.Value(0)).current;
-  const mistPulseAnim = useRef(new Animated.Value(0.35)).current;
-  const sunbeamPulseAnim = useRef(new Animated.Value(0.2)).current;
+  // Subtle glowing emblem pulse
   const logoPulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -55,83 +51,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
       }),
     ]).start();
 
-    // 2. Continuous Living Waterfall Flow stream loop 1 (fast cascading sheen)
-    const waterfallLoop1 = Animated.loop(
-      Animated.timing(waterfallFlowAnim, {
-        toValue: 1,
-        duration: 1600,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    );
-    waterfallLoop1.start();
-
-    // 3. Continuous Living Waterfall Flow stream loop 2 (secondary counter shimmer)
-    const waterfallLoop2 = Animated.loop(
-      Animated.timing(waterfallFlowAnim2, {
-        toValue: 1,
-        duration: 2200,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    );
-    waterfallLoop2.start();
-
-    // 4. Mist horizontal drift & breathing at the bottom splash pool
-    const mistLoop = Animated.loop(
-      Animated.sequence([
-        Animated.parallel([
-          Animated.timing(mistDriftAnim, {
-            toValue: 1,
-            duration: 3500,
-            easing: Easing.inOut(Easing.sin),
-            useNativeDriver: true,
-          }),
-          Animated.timing(mistPulseAnim, {
-            toValue: 0.65,
-            duration: 3500,
-            easing: Easing.inOut(Easing.sin),
-            useNativeDriver: true,
-          }),
-        ]),
-        Animated.parallel([
-          Animated.timing(mistDriftAnim, {
-            toValue: 0,
-            duration: 3500,
-            easing: Easing.inOut(Easing.sin),
-            useNativeDriver: true,
-          }),
-          Animated.timing(mistPulseAnim, {
-            toValue: 0.35,
-            duration: 3500,
-            easing: Easing.inOut(Easing.sin),
-            useNativeDriver: true,
-          }),
-        ]),
-      ])
-    );
-    mistLoop.start();
-
-    // 5. Canopy warm sunlight beam gentle shimmer
-    const sunbeamLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(sunbeamPulseAnim, {
-          toValue: 0.5,
-          duration: 2800,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(sunbeamPulseAnim, {
-          toValue: 0.2,
-          duration: 2800,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    sunbeamLoop.start();
-
-    // 6. Subtle glowing emblem pulse
+    // 2. Subtle glowing emblem pulse
     const logoPulseLoop = Animated.loop(
       Animated.sequence([
         Animated.timing(logoPulseAnim, {
@@ -151,29 +71,9 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
     logoPulseLoop.start();
 
     return () => {
-      waterfallLoop1.stop();
-      waterfallLoop2.stop();
-      mistLoop.stop();
-      sunbeamLoop.stop();
       logoPulseLoop.stop();
     };
   }, []);
-
-  // Waterfall translation interpolations
-  const waterfallTranslateY1 = waterfallFlowAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-140, 160],
-  });
-
-  const waterfallTranslateY2 = waterfallFlowAnim2.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-180, 140],
-  });
-
-  const mistTranslateX = mistDriftAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-16, 16],
-  });
 
   return (
     <View style={styles.container}>
@@ -185,62 +85,15 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
         style={styles.backgroundImage}
         resizeMode="cover"
       >
-        {/* Ambient Top Vignette to enhance status bar & logo readability */}
-        <View style={styles.topVignette} pointerEvents="none" />
-
-        {/* Dynamic Warm Sunlight Shimmer from Upper Canopy */}
-        <Animated.View
-          style={[
-            styles.canopySunlight,
-            {
-              opacity: sunbeamPulseAnim,
-            },
-          ]}
+        {/* Subtle static cinematic dark gradient at bottom for Get Started & text readability */}
+        <LinearGradient
+          colors={['transparent', 'rgba(0, 0, 0, 0.15)', 'rgba(0, 0, 0, 0.55)', 'rgba(0, 0, 0, 0.85)']}
+          locations={[0, 0.3, 0.65, 1]}
+          style={styles.bottomGradient}
           pointerEvents="none"
         />
 
-        {/* 2. Living Waterfall Continuous Flowing Stream Overlays (Center Column) */}
-        <View style={styles.waterfallChannelContainer} pointerEvents="none">
-          {/* Animated Water Sheen 1 */}
-          <Animated.View
-            style={[
-              styles.waterSheenLayer1,
-              {
-                transform: [{ translateY: waterfallTranslateY1 }],
-              },
-            ]}
-          />
-          {/* Animated Water Sheen 2 */}
-          <Animated.View
-            style={[
-              styles.waterSheenLayer2,
-              {
-                transform: [{ translateY: waterfallTranslateY2 }],
-              },
-            ]}
-          />
-        </View>
-
-        {/* 3. Living Mist and Spray Overlay over Lower Pool */}
-        <Animated.View
-          style={[
-            styles.mistPoolLayer,
-            {
-              opacity: mistPulseAnim,
-              transform: [{ translateX: mistTranslateX }],
-            },
-          ]}
-          pointerEvents="none"
-        >
-          <View style={styles.mistCloudCenter} />
-          <View style={styles.mistCloudLeft} />
-          <View style={styles.mistCloudRight} />
-        </Animated.View>
-
-        {/* Ambient Bottom Gradient for Contrast & CTA Readability */}
-        <View style={styles.bottomVignette} pointerEvents="none" />
-
-        {/* 4. Center Branding & Identity Content */}
+        {/* 2. Center Branding & Identity Content */}
         <Animated.View
           style={[
             styles.contentContainer,
@@ -283,7 +136,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
           </Text>
         </Animated.View>
 
-        {/* 5. Lower Action Area: "Get Started →" */}
+        {/* 3. Lower Action Area: "Get Started →" */}
         <Animated.View
           style={[
             styles.bottomActionContainer,
@@ -327,95 +180,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  /* Ambient atmospheric overlays */
-  topVignette: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: SCREEN_HEIGHT * 0.38,
-    backgroundColor: 'rgba(2, 27, 20, 0.42)',
-  },
-  bottomVignette: {
+  /* Clean subtle full-width bottom dark gradient */
+  bottomGradient: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: SCREEN_HEIGHT * 0.44,
-    backgroundColor: 'rgba(2, 27, 20, 0.72)',
-  },
-
-  /* Canopy Sunlight Pulses */
-  canopySunlight: {
-    position: 'absolute',
-    top: -20,
-    left: SCREEN_WIDTH * 0.2,
-    width: SCREEN_WIDTH * 0.6,
-    height: SCREEN_HEIGHT * 0.35,
-    borderRadius: SCREEN_WIDTH * 0.3,
-    backgroundColor: 'rgba(254, 240, 138, 0.16)',
-    transform: [{ scaleX: 1.5 }, { rotate: '-12deg' }],
-  },
-
-  /* Waterfall Channel Continuous Flowing Layers (Mid Screen) */
-  waterfallChannelContainer: {
-    position: 'absolute',
-    top: SCREEN_HEIGHT * 0.28,
-    left: SCREEN_WIDTH * 0.28,
-    width: SCREEN_WIDTH * 0.44,
     height: SCREEN_HEIGHT * 0.42,
-    overflow: 'hidden',
-    alignItems: 'center',
-  },
-  waterSheenLayer1: {
-    width: '75%',
-    height: 90,
-    borderRadius: 30,
-    backgroundColor: 'rgba(165, 243, 252, 0.22)',
-    borderLeftWidth: 2,
-    borderRightWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.35)',
-  },
-  waterSheenLayer2: {
-    width: '50%',
-    height: 70,
-    borderRadius: 20,
-    backgroundColor: 'rgba(56, 189, 248, 0.18)',
-    marginTop: -30,
-  },
-
-  /* Lower Mist & Water Splash Layer */
-  mistPoolLayer: {
-    position: 'absolute',
-    bottom: SCREEN_HEIGHT * 0.26,
-    left: 0,
-    right: 0,
-    height: 110,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mistCloudCenter: {
-    position: 'absolute',
-    width: SCREEN_WIDTH * 0.75,
-    height: 65,
-    borderRadius: 35,
-    backgroundColor: 'rgba(207, 250, 254, 0.15)',
-  },
-  mistCloudLeft: {
-    position: 'absolute',
-    left: 20,
-    width: 140,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(167, 243, 208, 0.12)',
-  },
-  mistCloudRight: {
-    position: 'absolute',
-    right: 20,
-    width: 150,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(165, 243, 252, 0.12)',
   },
 
   /* Center Branding Content */
