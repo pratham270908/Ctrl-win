@@ -4,9 +4,9 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { InteractiveMap } from '../components/InteractiveMap';
 import { PlaceCard } from '../components/PlaceCard';
@@ -45,8 +45,14 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     }
   };
 
+  const handleRecenter = () => {
+    if (places.length > 0) {
+      setSelectedPlace(places[0]);
+    }
+  };
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Top Floating Category Filter Bar */}
       <View style={styles.topFilterBar}>
         <ScrollView
@@ -95,6 +101,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           places={places}
           selectedPlace={selectedPlace}
           onSelectPlace={(p) => setSelectedPlace(p)}
+          onRecenter={handleRecenter}
           destinationName={APP_CONFIG.defaultDestination.name}
         />
       </View>

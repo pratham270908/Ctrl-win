@@ -20,8 +20,8 @@ interface AppContextType {
   selectedPlace: Place | null;
   setSelectedPlace: (place: Place | null) => void;
   
-  activeDestination: { name: string; distanceKm: number; estimatedMinutes: number };
-  setActiveDestination: (dest: { name: string; distanceKm: number; estimatedMinutes: number }) => void;
+  activeDestination: { name: string; latitude: number; longitude: number; distanceKm: number; estimatedMinutes: number };
+  setActiveDestination: (dest: { name: string; latitude: number; longitude: number; distanceKm: number; estimatedMinutes: number }) => void;
   
   hasCompletedOnboarding: boolean;
   completeOnboarding: () => Promise<void>;
@@ -119,10 +119,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         AsyncStorage.getItem(APP_CONFIG.storageKeys.ONBOARDING_DONE),
       ]);
 
-      if (savedSettings) setSettings(JSON.parse(savedSettings));
-      if (savedReports) setReports(JSON.parse(savedReports));
-      if (savedSearches) setRecentSearches(JSON.parse(savedSearches));
-      if (savedOnboarding) setHasCompletedOnboarding(JSON.parse(savedOnboarding));
+      if (savedSettings) {
+        const parsedSettings = JSON.parse(savedSettings);
+        if (parsedSettings && typeof parsedSettings === 'object') {
+          setSettings((prev) => ({ ...prev, ...parsedSettings }));
+        }
+      }
+      if (savedReports) {
+        const parsedReports = JSON.parse(savedReports);
+        if (Array.isArray(parsedReports)) {
+          setReports(parsedReports);
+        }
+      }
+      if (savedSearches) {
+        const parsedSearches = JSON.parse(savedSearches);
+        if (Array.isArray(parsedSearches)) {
+          setRecentSearches(parsedSearches);
+        }
+      }
+      if (savedOnboarding) {
+        setHasCompletedOnboarding(Boolean(JSON.parse(savedOnboarding)));
+      }
     } catch {
       // Use defaults
     }
@@ -153,7 +170,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       timestamp: 'Just now',
       status: 'Received',
     };
-    const updated = [newReport, ...reports];
+    const current = Array.isArray(reports) ? reports : [];
+    const updated = [newReport, ...current];
     setReports(updated);
     try {
       await AsyncStorage.setItem(
@@ -168,7 +186,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addRecentSearch = async (query: string): Promise<void> => {
     const trimmed = query.trim();
     if (!trimmed) return;
-    const filtered = recentSearches.filter((s) => s.toLowerCase() !== trimmed.toLowerCase());
+    const current = Array.isArray(recentSearches) ? recentSearches : [];
+    const filtered = current.filter((s) => s && s.toLowerCase() !== trimmed.toLowerCase());
     const updated = [trimmed, ...filtered].slice(0, 10);
     setRecentSearches(updated);
     try {
@@ -191,7 +210,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const toggleOfflineDownload = async (areaId: string): Promise<void> => {
-    const updated = offlineAreas.map((area) => {
+    const current = Array.isArray(offlineAreas) ? offlineAreas : [];
+    const updated = current.map((area) => {
       if (area.id === areaId) {
         const willBeDownloaded = !area.downloaded;
         return {

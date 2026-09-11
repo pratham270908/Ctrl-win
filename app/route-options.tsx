@@ -5,8 +5,8 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { RouteCard } from '../components/RouteCard';
 import { InteractiveMap } from '../components/InteractiveMap';
@@ -31,7 +31,7 @@ export const RouteOptionsScreen: React.FC<RouteOptionsScreenProps> = ({
   const destCategory = destinationPlace?.category || 'Destination';
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
       {/* Top Header */}
       <View style={styles.topHeader}>
         <TouchableOpacity

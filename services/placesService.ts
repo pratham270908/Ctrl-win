@@ -1,6 +1,8 @@
-import { Place, PlaceCategory, SortCriteria } from '../types';
+import { Place, PlaceCategory, SortCriteria, Coordinates } from '../types';
 import { MOCK_PLACES } from '../data/mockPlaces';
 import { sortPlaces } from '../utils/sortingUtils';
+import { classifyDirection, calculateDistanceMeters } from '../utils/directionUtils';
+import { APP_CONFIG } from '../constants/config';
 
 export interface GroupedPlacesResult {
   ahead: Place[];
@@ -9,20 +11,66 @@ export interface GroupedPlacesResult {
   totalCount: number;
 }
 
+export type RecommendedFilter = 'ALL' | 'AHEAD_ONLY' | 'OPEN_NOW' | 'TOP_RATED' | 'UNDER_1KM';
+
 class PlacesService {
   private places: Place[] = [...MOCK_PLACES];
 
   /**
-   * Fetches top recommended places for the home screen dashboard
-   * Prioritizes places AHEAD of user with top ratings
+   * Dynamically recalculates direction (AHEAD, ON_ROUTE, BEHIND) and travel time
+   * for all places based on the user's active travel vector angle and speed.
    */
-  async getRecommendedPlaces(): Promise<Place[]> {
-    await new Promise((resolve) => setTimeout(resolve, 60));
-    // Filter places that are AHEAD or ON_ROUTE and OPEN
-    const candidates = this.places.filter(
-      (p) => (p.direction === 'AHEAD' || p.direction === 'ON_ROUTE') && p.status === 'OPEN'
-    );
-    return sortPlaces(candidates, 'BEST_OVERALL').slice(0, 5);
+  getPlacesForHeading(headingAngle: number = 45, speedKmh: number = 38): Place[] {
+    const userLocation = APP_CONFIG.defaultLocation;
+    return this.places.map((place) => {
+      const liveDist = calculateDistanceMeters(userLocation, place.coordinates);
+      const liveDirection = classifyDirection(
+        userLocation,
+        headingAngle,
+        place.coordinates,
+        place.routeDeviation
+      );
+      // Realistic driving travel time in minutes based on active speed
+      const speedMps = Math.max(8, (speedKmh * 1000) / 3600);
+      const liveTime = Math.max(1, Math.round(liveDist / (speedMps * 60)));
+
+      return {
+        ...place,
+        distance: liveDist,
+        travelTime: liveTime,
+        direction: liveDirection,
+      };
+    });
+  }
+
+  /**
+   * Fetches recommended places for the home screen dashboard with dynamic heading & filter support
+   */
+  async getRecommendedPlaces(
+    headingAngle: number = 45,
+    speedKmh: number = 38,
+    filterOption: RecommendedFilter = 'ALL'
+  ): Promise<Place[]> {
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const all = this.getPlacesForHeading(headingAngle, speedKmh);
+    let candidates = all;
+
+    if (filterOption === 'AHEAD_ONLY') {
+      candidates = all.filter((p) => p.direction === 'AHEAD');
+    } else if (filterOption === 'OPEN_NOW') {
+      candidates = all.filter((p) => p.status === 'OPEN');
+    } else if (filterOption === 'TOP_RATED') {
+      candidates = all.filter((p) => p.rating >= 4.5);
+    } else if (filterOption === 'UNDER_1KM') {
+      candidates = all.filter((p) => p.distance <= 1000);
+    } else {
+      // Default: AHEAD and ON_ROUTE
+      candidates = all.filter(
+        (p) => (p.direction === 'AHEAD' || p.direction === 'ON_ROUTE') && p.status === 'OPEN'
+      );
+    }
+
+    return sortPlaces(candidates, 'BEST_OVERALL').slice(0, 6);
   }
 
   /**

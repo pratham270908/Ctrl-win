@@ -1,22 +1,79 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
-import { useApp } from '../store/AppContext';
+
+export interface DirectionVectorOption {
+  angle: number;
+  label: string;
+  sublabel: string;
+  compassName: string;
+}
+
+export const DIRECTION_VECTORS: DirectionVectorOption[] = [
+  {
+    angle: 45,
+    label: '45° NE',
+    sublabel: 'Gachibowli / Inorbit',
+    compassName: 'North-East',
+  },
+  {
+    angle: 135,
+    label: '135° SE',
+    sublabel: 'Jubilee Hills / Road 36',
+    compassName: 'South-East',
+  },
+  {
+    angle: 225,
+    label: '225° SW',
+    sublabel: 'Financial Dist / ORR',
+    compassName: 'South-West',
+  },
+  {
+    angle: 315,
+    label: '315° NW',
+    sublabel: 'Miyapur / Kukatpally',
+    compassName: 'North-West',
+  },
+];
 
 interface DirectionIndicatorProps {
+  headingAngle?: number;
   headingText?: string;
   speedKmh?: number;
+  onAngleChange?: (angle: number, label: string) => void;
+  onSpeedChange?: (speed: number) => void;
   onSimulateChange?: () => void;
 }
 
 export const DirectionIndicator: React.FC<DirectionIndicatorProps> = ({
+  headingAngle = 45,
   headingText = 'Travelling North-East',
   speedKmh = 38,
+  onAngleChange,
+  onSpeedChange,
   onSimulateChange,
 }) => {
+  const [showVectors, setShowVectors] = useState(false);
+
+  const handleSelectVector = (vector: DirectionVectorOption) => {
+    if (onAngleChange) {
+      onAngleChange(vector.angle, `Travelling ${vector.compassName}`);
+    }
+  };
+
+  const handleCycleSpeed = () => {
+    const speeds = [15, 38, 65, 85];
+    const nextIdx = (speeds.indexOf(speedKmh) + 1) % speeds.length;
+    const nextSpeed = speeds[nextIdx];
+    if (onSpeedChange) {
+      onSpeedChange(nextSpeed);
+    }
+  };
+
   return (
     <View style={styles.card}>
+      {/* Top Bar: Title & Toggle Vector Selector */}
       <View style={styles.topRow}>
         <View style={styles.badge}>
           <View style={styles.pulseDot} />
@@ -24,17 +81,66 @@ export const DirectionIndicator: React.FC<DirectionIndicatorProps> = ({
         </View>
 
         <TouchableOpacity
-          style={styles.simButton}
-          onPress={onSimulateChange}
-          activeOpacity={0.7}
+          style={[styles.simButton, showVectors && styles.simButtonActive]}
+          onPress={() => setShowVectors(!showVectors)}
+          activeOpacity={0.75}
         >
-          <Ionicons name="compass" size={14} color={COLORS.accent} />
-          <Text style={styles.simButtonText}>45° NE</Text>
+          <View style={{ transform: [{ rotate: `${headingAngle}deg` }] }}>
+            <Ionicons name="navigate" size={13} color={showVectors ? '#FFFFFF' : COLORS.accent} />
+          </View>
+          <Text style={[styles.simButtonText, showVectors && styles.simButtonTextActive]}>
+            {headingAngle}° ({showVectors ? 'Close' : 'Change'})
+          </Text>
+          <Ionicons
+            name={showVectors ? 'chevron-up' : 'chevron-down'}
+            size={12}
+            color={showVectors ? '#FFFFFF' : COLORS.accent}
+          />
         </TouchableOpacity>
       </View>
 
+      {/* Interactive Vector Selector Chips (Visible on tap) */}
+      {showVectors && (
+        <View style={styles.vectorSelectorBox}>
+          <Text style={styles.vectorSelectorTitle}>Tap a Direction Vector to Re-rank Places Ahead:</Text>
+          <View style={styles.vectorGrid}>
+            {DIRECTION_VECTORS.map((v) => {
+              const isActive = headingAngle === v.angle;
+              return (
+                <TouchableOpacity
+                  key={v.angle}
+                  style={[styles.vectorChip, isActive && styles.vectorChipActive]}
+                  onPress={() => handleSelectVector(v)}
+                  activeOpacity={0.75}
+                >
+                  <View style={{ transform: [{ rotate: `${v.angle}deg` }], marginRight: 6 }}>
+                    <Ionicons
+                      name="navigate"
+                      size={14}
+                      color={isActive ? '#FFFFFF' : COLORS.accent}
+                    />
+                  </View>
+                  <View>
+                    <Text style={[styles.vectorChipLabel, isActive && styles.vectorChipLabelActive]}>
+                      {v.label}
+                    </Text>
+                    <Text
+                      style={[styles.vectorChipSub, isActive && styles.vectorChipSubActive]}
+                      numberOfLines={1}
+                    >
+                      {v.sublabel}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      )}
+
+      {/* Main Direction Status & Corridor Visual */}
       <View style={styles.mainRow}>
-        {/* Visual Direction Corridor Axis */}
+        {/* Visual Direction Corridor Axis with Animated Orientation */}
         <View style={styles.corridorVisual}>
           <View style={styles.aheadPoint}>
             <Ionicons name="arrow-up" size={14} color={COLORS.ahead} />
@@ -45,7 +151,14 @@ export const DirectionIndicator: React.FC<DirectionIndicatorProps> = ({
 
           <View style={styles.userPoint}>
             <View style={styles.userPulseRing} />
-            <View style={styles.userCoreDot} />
+            <View
+              style={[
+                styles.userCoreDot,
+                { transform: [{ rotate: `${headingAngle}deg` }] },
+              ]}
+            >
+              <Ionicons name="navigate" size={10} color="#FFFFFF" />
+            </View>
             <Text style={styles.userLabel}>YOU</Text>
           </View>
 
@@ -57,25 +170,34 @@ export const DirectionIndicator: React.FC<DirectionIndicatorProps> = ({
           </View>
         </View>
 
-        {/* Narrative & Status Description */}
+        {/* Narrative & Interactive Stats Row */}
         <View style={styles.narrativeCol}>
           <Text style={styles.directionTitle}>{headingText}</Text>
           <Text style={styles.directionSubtitle}>
-            Prioritizing places directly in your path. Avoiding unnecessary U-turns and traffic detours.
+            Actively prioritizing stops along your forward travel vector. Avoiding U-turns and traffic detours.
           </Text>
 
           <View style={styles.statsRow}>
-            <View style={styles.statPill}>
-              <Ionicons name="speedometer-outline" size={13} color={COLORS.textSecondary} />
+            <TouchableOpacity
+              style={styles.statPill}
+              onPress={handleCycleSpeed}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="speedometer-outline" size={13} color={COLORS.accent} />
               <Text style={styles.statText}>{speedKmh} km/h</Text>
-            </View>
+              <Ionicons name="sync-outline" size={10} color={COLORS.textMuted} />
+            </TouchableOpacity>
 
-            <View style={styles.statPill}>
-              <Ionicons name="shield-checkmark-outline" size={13} color={COLORS.ahead} />
+            <TouchableOpacity
+              style={styles.statPill}
+              onPress={() => setShowVectors(!showVectors)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="compass-outline" size={13} color={COLORS.ahead} />
               <Text style={[styles.statText, { color: COLORS.ahead, fontWeight: '700' }]}>
-                Vector Active
+                {headingAngle}° Vector Locked
               </Text>
-            </View>
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -238,5 +360,63 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.textSecondary,
     fontWeight: '600',
+  },
+  simButtonActive: {
+    backgroundColor: COLORS.accent,
+  },
+  simButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  vectorSelectorBox: {
+    backgroundColor: COLORS.surfaceLight,
+    padding: SPACING.md,
+    borderRadius: RADIUS.lg,
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  vectorSelectorTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.sm,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  vectorGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  vectorChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.cardBg,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    width: '48%',
+  },
+  vectorChipActive: {
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
+    ...SHADOWS.sm,
+  },
+  vectorChipLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  vectorChipLabelActive: {
+    color: '#FFFFFF',
+  },
+  vectorChipSub: {
+    fontSize: 10,
+    color: COLORS.textMuted,
+  },
+  vectorChipSubActive: {
+    color: 'rgba(255, 255, 255, 0.85)',
   },
 });

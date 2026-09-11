@@ -5,9 +5,9 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { PlaceCard } from '../components/PlaceCard';
 import { useFavorites } from '../store/FavoritesContext';
@@ -22,15 +22,16 @@ interface FavoritesScreenProps {
 }
 
 export const FavoritesScreen: React.FC<FavoritesScreenProps> = ({
-  onBack,
   onPlacePress,
   onNavigatePress,
   onExplorePress,
+  onBack,
 }) => {
   const { favorites, clearFavorites } = useFavorites();
+  const safeFavorites = Array.isArray(favorites) ? favorites.filter((p) => p && p.id) : [];
 
   const handleClearAll = () => {
-    if (favorites.length === 0) return;
+    if (safeFavorites.length === 0) return;
     Alert.alert(
       'Clear All Saved Places?',
       'Are you sure you want to remove all saved places from your favorites?',
@@ -42,7 +43,7 @@ export const FavoritesScreen: React.FC<FavoritesScreenProps> = ({
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Top Header */}
       <View style={styles.topHeader}>
         {onBack && (
@@ -55,7 +56,7 @@ export const FavoritesScreen: React.FC<FavoritesScreenProps> = ({
           <Text style={styles.headerTitle}>Saved Useful Places</Text>
         </View>
 
-        {favorites.length > 0 && (
+        {safeFavorites.length > 0 && (
           <TouchableOpacity
             style={styles.clearBtn}
             onPress={handleClearAll}
@@ -67,7 +68,7 @@ export const FavoritesScreen: React.FC<FavoritesScreenProps> = ({
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {favorites.length === 0 ? (
+        {safeFavorites.length === 0 ? (
           /* Empty State */
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIconCircle}>
@@ -93,11 +94,11 @@ export const FavoritesScreen: React.FC<FavoritesScreenProps> = ({
             <View style={styles.countBanner}>
               <Ionicons name="bookmark" size={14} color={COLORS.accent} />
               <Text style={styles.countText}>
-                {favorites.length} saved place{favorites.length === 1 ? '' : 's'} ready for offline directional guidance
+                {safeFavorites.length} saved place{safeFavorites.length === 1 ? '' : 's'} ready for offline directional guidance
               </Text>
             </View>
 
-            {favorites.map((place) => (
+            {safeFavorites.map((place) => (
               <PlaceCard
                 key={place.id}
                 place={place}

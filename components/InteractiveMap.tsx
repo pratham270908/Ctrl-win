@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Place } from '../types';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
@@ -29,39 +29,120 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   isNavigationMode = false,
 }) => {
   const [activeMarker, setActiveMarker] = useState<Place | null>(selectedPlace || null);
+  const [mapLayer, setMapLayer] = useState<'STANDARD' | 'TRAFFIC' | 'SATELLITE'>('STANDARD');
+  const [zoomLevel, setZoomLevel] = useState<number>(1.0);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showMapToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 2400);
+  };
 
   const handleMarkerTap = (place: Place) => {
+    if (!place || !place.id) return;
     setActiveMarker(place);
     if (onSelectPlace) {
       onSelectPlace(place);
     }
   };
 
+  const handleRecenter = () => {
+    showMapToast('📍 Camera re-centered on forward vector (45° NE)');
+    if (onRecenter) {
+      onRecenter();
+    } else {
+      setActiveMarker(null);
+    }
+  };
+
+  const handleCycleLayers = () => {
+    setMapLayer((prev) => {
+      if (prev === 'STANDARD') {
+        showMapToast('🚦 Live Traffic Layer: Flowing Normal');
+        return 'TRAFFIC';
+      }
+      if (prev === 'TRAFFIC') {
+        showMapToast('🛰️ Satellite Dark Mode Active');
+        return 'SATELLITE';
+      }
+      showMapToast('🗺️ Standard Daylight Map Active');
+      return 'STANDARD';
+    });
+  };
+
+  const handleZoomIn = () => {
+    setZoomLevel((prev) => {
+      const next = Math.min(1.3, prev + 0.15);
+      showMapToast(`Zoom: ${next.toFixed(2)}x (Street Level)`);
+      return next;
+    });
+  };
+
+  const handleZoomOut = () => {
+    setZoomLevel((prev) => {
+      const next = Math.max(0.75, prev - 0.15);
+      showMapToast(`Zoom: ${next.toFixed(2)}x (Corridor Level)`);
+      return next;
+    });
+  };
+
+  const handleCallPlace = (place: Place) => {
+    Alert.alert(
+      `Calling ${place.name}`,
+      `Connecting to +91 40 2311 8899\nDirection: ${place.direction} (${place.distance}m ahead, ~${place.travelTime} min)`
+    );
+  };
+
+  const safePlaces = (places || []).filter((p) => p && p.id);
+  const isDark = mapLayer === 'SATELLITE';
+  const isTraffic = mapLayer === 'TRAFFIC';
+
   return (
-    <View style={[styles.mapContainer, { height }]}>
-      {/* Simulated Map Background with Modern Stylized Roads */}
-      <View style={styles.mapCanvas}>
+    <View style={[styles.mapContainer, { height }, isDark && styles.mapContainerDark]}>
+      {/* Simulated Map Background with Zoom Scale Transform */}
+      <View
+        style={[
+          styles.mapCanvas,
+          isDark && styles.mapCanvasDark,
+          { transform: [{ scale: zoomLevel }] },
+        ]}
+      >
         {/* Secondary Cross Roads */}
-        <View style={styles.roadHorizontal1} />
-        <View style={styles.roadHorizontal2} />
-        <View style={styles.roadVertical1} />
-        <View style={styles.roadVertical2} />
+        <View style={[styles.roadHorizontal1, isDark && styles.roadDark]} />
+        <View style={[styles.roadHorizontal2, isDark && styles.roadDark]} />
+        <View style={[styles.roadVertical1, isDark && styles.roadDark]} />
+        <View style={[styles.roadVertical2, isDark && styles.roadDark]} />
 
         {/* Primary Main Expressway / Corridor */}
-        <View style={styles.expresswayDiagonal} />
-        <View style={styles.expresswayCenterLine} />
+        <View style={[styles.expresswayDiagonal, isDark && styles.expresswayDark]} />
+        <View style={[styles.expresswayCenterLine, isDark && styles.expresswayCenterLineDark]} />
+
+        {/* Traffic Congestion Visual Overlays (if Traffic Layer Active) */}
+        {isTraffic && (
+          <>
+            <View style={styles.trafficSegmentGreen} />
+            <View style={styles.trafficSegmentOrange} />
+            <View style={styles.trafficSegmentRed} />
+          </>
+        )}
 
         {/* Active Journey Route Line */}
         <View style={styles.routePathLine} />
 
         {/* Green Area / Tech Park Landmark */}
-        <View style={styles.landmarkPark}>
-          <Text style={styles.landmarkText}>Knowledge Park</Text>
+        <View style={[styles.landmarkPark, isDark && styles.landmarkParkDark]}>
+          <Text style={[styles.landmarkText, isDark && styles.landmarkTextDark]}>
+            Knowledge Park
+          </Text>
         </View>
 
         {/* Water body landmark */}
-        <View style={styles.landmarkLake}>
-          <Text style={styles.landmarkText}>Durgam Lake</Text>
+        <View style={[styles.landmarkLake, isDark && styles.landmarkLakeDark]}>
+          <Text style={[styles.landmarkText, isDark && styles.landmarkTextDark]}>
+            Durgam Lake
+          </Text>
         </View>
 
         {/* User Location Marker with Directional Heading Cone */}
@@ -89,8 +170,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         </View>
 
         {/* Place Markers plotted along the visual journey */}
-        {places.slice(0, 4).map((place, index) => {
-          // Compute mock relative layout positions based on place direction
+        {safePlaces.slice(0, 4).map((place, index) => {
           let top = 40;
           let left = 60;
 
@@ -101,7 +181,6 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
             top = 110;
             left = SCREEN_WIDTH * 0.58;
           } else {
-            // BEHIND
             top = 175;
             left = SCREEN_WIDTH * 0.25;
           }
@@ -146,21 +225,62 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         })}
       </View>
 
-      {/* Floating Map Controls */}
+      {/* Interactive Toast Notification Banner */}
+      {toastMessage && (
+        <View style={styles.toastBanner}>
+          <Text style={styles.toastBannerText}>{toastMessage}</Text>
+        </View>
+      )}
+
+      {/* Floating Map Controls Stack */}
       <View style={styles.mapControls}>
         {showRecenterButton && (
           <TouchableOpacity
             style={styles.controlBtn}
-            onPress={onRecenter}
+            onPress={handleRecenter}
             activeOpacity={0.7}
             accessibilityLabel="Recenter location"
           >
-            <Ionicons name="locate" size={20} color={COLORS.accent} />
+            <Ionicons name="locate" size={18} color={COLORS.accent} />
           </TouchableOpacity>
         )}
 
-        <TouchableOpacity style={styles.controlBtn} activeOpacity={0.7}>
-          <Ionicons name="layers-outline" size={18} color={COLORS.primary} />
+        {/* Map Layer Switcher: Standard -> Traffic -> Satellite */}
+        <TouchableOpacity
+          style={[
+            styles.controlBtn,
+            isTraffic && { backgroundColor: '#DBEAFE', borderColor: COLORS.accent },
+            isDark && { backgroundColor: '#1E293B', borderColor: '#38BDF8' },
+          ]}
+          activeOpacity={0.7}
+          onPress={handleCycleLayers}
+          accessibilityLabel="Toggle map layers"
+        >
+          <Ionicons
+            name={isDark ? 'moon' : isTraffic ? 'speedometer' : 'layers-outline'}
+            size={18}
+            color={isDark ? '#38BDF8' : isTraffic ? COLORS.accent : COLORS.primary}
+          />
+        </TouchableOpacity>
+
+        {/* Zoom In Button */}
+        <TouchableOpacity
+          style={styles.controlBtn}
+          onPress={handleZoomIn}
+          activeOpacity={0.7}
+          accessibilityLabel="Zoom In"
+        >
+          <Ionicons name="add" size={20} color={COLORS.textPrimary} />
+        </TouchableOpacity>
+
+        {/* Zoom Out Button */}
+        <TouchableOpacity
+          style={styles.controlBtn}
+          onPress={handleZoomOut}
+          activeOpacity={0.7}
+          accessibilityLabel="Zoom Out"
+        >
+          <Ionicons name="remove" size={20} color={COLORS.textPrimary} />
         </TouchableOpacity>
 
         {isNavigationMode && (
@@ -171,25 +291,58 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         )}
       </View>
 
-      {/* Active Marker Quick Info Sheet (if tapped) */}
-      {activeMarker && (
+      {/* Active Marker Quick Action Sheet (if tapped) */}
+      {activeMarker && activeMarker.id && (
         <View style={styles.quickCard}>
           <View style={styles.quickCardLeft}>
-            <Text style={styles.quickCardName} numberOfLines={1}>
-              {activeMarker.name}
-            </Text>
+            <View style={styles.quickCardHeaderRow}>
+              <Text style={styles.quickCardEmoji}>
+                {activeMarker.category === 'Coffee'
+                  ? '☕'
+                  : activeMarker.category === 'Petrol'
+                  ? '⛽'
+                  : activeMarker.category === 'Hospital'
+                  ? '🏥'
+                  : activeMarker.category === 'ATM'
+                  ? '🏧'
+                  : '📍'}
+              </Text>
+              <Text style={styles.quickCardName} numberOfLines={1}>
+                {activeMarker.name || 'Selected Place'}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setActiveMarker(null)}
+                style={styles.quickCardCloseBtn}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={16} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            </View>
+
             <Text style={styles.quickCardMeta}>
-              {activeMarker.direction} • {activeMarker.distance}m • {activeMarker.travelTime} min
+              {activeMarker.direction === 'AHEAD' ? '🟢 AHEAD' : '🟡 ' + activeMarker.direction} • {activeMarker.distance ?? 0}m • ~{activeMarker.travelTime ?? 0} min detour
             </Text>
           </View>
 
-          <TouchableOpacity
-            style={styles.quickCardAction}
-            onPress={() => onSelectPlace && onSelectPlace(activeMarker)}
-          >
-            <Text style={styles.quickCardActionText}>Details</Text>
-            <Ionicons name="chevron-forward" size={14} color="#FFFFFF" />
-          </TouchableOpacity>
+          <View style={styles.quickCardActionsWrap}>
+            <TouchableOpacity
+              style={styles.quickCardCallBtn}
+              onPress={() => handleCallPlace(activeMarker)}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="call" size={13} color={COLORS.accent} />
+              <Text style={styles.quickCardCallText}>Call</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.quickCardAction}
+              onPress={() => onSelectPlace && activeMarker && onSelectPlace(activeMarker)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="navigate" size={13} color="#FFFFFF" />
+              <Text style={styles.quickCardActionText}>Route</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
     </View>
@@ -204,7 +357,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   mapCanvas: {
-    ...StyleSheet.absoluteFillObject,
+    ...(StyleSheet.absoluteFill as any),
     backgroundColor: '#E8EDF2',
   },
   roadHorizontal1: {
@@ -501,15 +654,123 @@ const styles = StyleSheet.create({
   },
   quickCardAction: {
     backgroundColor: COLORS.accent,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: RADIUS.full,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: 3,
   },
   quickCardActionText: {
     color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  mapContainerDark: {
+    backgroundColor: '#0B132B',
+  },
+  mapCanvasDark: {
+    backgroundColor: '#0F172A',
+  },
+  roadDark: {
+    backgroundColor: '#1E293B',
+    borderColor: '#334155',
+  },
+  expresswayDark: {
+    backgroundColor: '#1E293B',
+    borderColor: '#0284C7',
+  },
+  expresswayCenterLineDark: {
+    backgroundColor: '#38BDF8',
+  },
+  landmarkParkDark: {
+    backgroundColor: '#064E3B',
+    borderColor: '#059669',
+  },
+  landmarkLakeDark: {
+    backgroundColor: '#0C4A6E',
+    borderColor: '#0284C7',
+  },
+  landmarkTextDark: {
+    color: '#38BDF8',
+  },
+  trafficSegmentGreen: {
+    position: 'absolute',
+    top: 50,
+    left: 40,
+    width: 90,
+    height: 4,
+    backgroundColor: '#22C55E',
+    borderRadius: 2,
+    transform: [{ rotate: '32deg' }],
+  },
+  trafficSegmentOrange: {
+    position: 'absolute',
+    top: 95,
+    left: 120,
+    width: 80,
+    height: 4,
+    backgroundColor: '#F59E0B',
+    borderRadius: 2,
+    transform: [{ rotate: '32deg' }],
+  },
+  trafficSegmentRed: {
+    position: 'absolute',
+    top: 140,
+    left: 190,
+    width: 60,
+    height: 4,
+    backgroundColor: '#EF4444',
+    borderRadius: 2,
+    transform: [{ rotate: '32deg' }],
+  },
+  toastBanner: {
+    position: 'absolute',
+    top: 10,
+    left: 14,
+    right: 60,
+    backgroundColor: 'rgba(15, 23, 42, 0.92)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: RADIUS.full,
+    ...SHADOWS.sm,
+    zIndex: 25,
+  },
+  toastBannerText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  quickCardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  quickCardEmoji: {
+    fontSize: 14,
+  },
+  quickCardCloseBtn: {
+    marginLeft: 6,
+    padding: 2,
+  },
+  quickCardActionsWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  quickCardCallBtn: {
+    backgroundColor: COLORS.surfaceLight,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: RADIUS.full,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  quickCardCallText: {
+    color: COLORS.accent,
     fontSize: 11,
     fontWeight: '700',
   },

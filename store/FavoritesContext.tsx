@@ -25,7 +25,12 @@ export const FavoritesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     try {
       const stored = await AsyncStorage.getItem(APP_CONFIG.storageKeys.FAVORITES);
       if (stored) {
-        setFavorites(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          setFavorites(parsed.filter((p) => p && p.id));
+        } else {
+          setFavorites([MOCK_PLACES[0], MOCK_PLACES[6]]);
+        }
       } else {
         // Pre-populate with 2 realistic favorites for instant delight
         const initial = [MOCK_PLACES[0], MOCK_PLACES[6]];
@@ -42,16 +47,19 @@ export const FavoritesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const isFavorite = (placeId: string): boolean => {
-    return favorites.some((p) => p.id === placeId);
+    if (!placeId || !Array.isArray(favorites)) return false;
+    return favorites.some((p) => p && p.id === placeId);
   };
 
   const toggleFavorite = async (place: Place): Promise<void> => {
+    if (!place || !place.id) return;
     try {
+      const current = Array.isArray(favorites) ? favorites : [];
       let updated: Place[];
       if (isFavorite(place.id)) {
-        updated = favorites.filter((p) => p.id !== place.id);
+        updated = current.filter((p) => p && p.id !== place.id);
       } else {
-        updated = [place, ...favorites];
+        updated = [place, ...current.filter((p) => p && p.id !== place.id)];
       }
       setFavorites(updated);
       await AsyncStorage.setItem(
@@ -64,8 +72,10 @@ export const FavoritesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const removeFavorite = async (placeId: string): Promise<void> => {
+    if (!placeId) return;
     try {
-      const updated = favorites.filter((p) => p.id !== placeId);
+      const current = Array.isArray(favorites) ? favorites : [];
+      const updated = current.filter((p) => p && p.id !== placeId);
       setFavorites(updated);
       await AsyncStorage.setItem(
         APP_CONFIG.storageKeys.FAVORITES,

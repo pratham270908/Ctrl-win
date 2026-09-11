@@ -11,6 +11,7 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
 import { useAuth } from '../store/AuthContext';
@@ -64,10 +65,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoid}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
@@ -221,13 +223,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
-  );
+  </SafeAreaView>
+);
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  keyboardAvoid: {
+    flex: 1,
   },
   scrollContent: {
     paddingHorizontal: SPACING.xl,

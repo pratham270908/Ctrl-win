@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
 import { useFavorites } from '../store/FavoritesContext';
 
@@ -56,12 +57,14 @@ export const CustomBottomNav: React.FC<CustomBottomNavProps> = ({
   onSelectTab,
 }) => {
   const { favorites } = useFavorites();
+  const insets = useSafeAreaInsets();
 
   return (
-    <View style={styles.navBar}>
+    <View style={[styles.navBar, { paddingBottom: Math.max(SPACING.md, insets.bottom) }]}>
       {TABS.map((tab) => {
         const isActive = currentTab === tab.id;
-        const showBadge = tab.id === 'favorites' && favorites.length > 0;
+        const favCount = Array.isArray(favorites) ? favorites.length : 0;
+        const showBadge = tab.id === 'favorites' && favCount > 0;
 
         return (
           <TouchableOpacity
@@ -81,7 +84,7 @@ export const CustomBottomNav: React.FC<CustomBottomNavProps> = ({
               />
               {showBadge && (
                 <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{favorites.length}</Text>
+                  <Text style={styles.badgeText}>{favCount}</Text>
                 </View>
               )}
             </View>

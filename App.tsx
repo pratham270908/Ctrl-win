@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, StatusBar, SafeAreaView } from 'react-native';
+import { View, StyleSheet, StatusBar } from 'react-native';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './store/AuthContext';
 import { AppProvider, useApp } from './store/AppContext';
 import { FavoritesProvider } from './store/FavoritesContext';
@@ -93,11 +94,13 @@ const MainNavigator: React.FC = () => {
   };
 
   const handlePlaceSelect = (place: Place) => {
+    if (!place || !place.id) return;
     setSelectedPlace(place);
     setCurrentScreen('PLACE_DETAILS');
   };
 
   const handleNavigatePress = (place: Place) => {
+    if (!place || !place.id) return;
     setSelectedPlace(place);
     setCurrentScreen('ROUTE_OPTIONS');
   };
@@ -109,7 +112,7 @@ const MainNavigator: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.cardBg} />
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
       {/* 1. SPLASH SCREEN */}
       {currentScreen === 'SPLASH' && (
@@ -140,6 +143,7 @@ const MainNavigator: React.FC = () => {
               onOfflineMapsPress={() => setCurrentScreen('OFFLINE_MAPS')}
               onAccessibilityPress={() => setCurrentScreen('ACCESSIBILITY')}
               onTransportPress={() => setCurrentScreen('TRANSPORT')}
+              onMapPress={() => navigateToTabs('map')}
             />
           )}
 
@@ -281,13 +285,15 @@ const MainNavigator: React.FC = () => {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppProvider>
-        <FavoritesProvider>
-          <MainNavigator />
-        </FavoritesProvider>
-      </AppProvider>
-    </AuthProvider>
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+      <AuthProvider>
+        <AppProvider>
+          <FavoritesProvider>
+            <MainNavigator />
+          </FavoritesProvider>
+        </AppProvider>
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }
 

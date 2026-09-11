@@ -5,10 +5,10 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Switch,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../store/AppContext';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
@@ -40,7 +40,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
       {/* Top Header */}
       <View style={styles.topHeader}>
         <TouchableOpacity style={styles.backBtn} onPress={onBack}>

@@ -5,9 +5,9 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { directionsService } from '../services/directionsService';
 import { PublicTransitRoute } from '../data/mockRoutes';
@@ -68,7 +68,7 @@ export const PublicTransportScreen: React.FC<PublicTransportScreenProps> = ({
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
       {/* Top Header */}
       <View style={styles.topHeader}>
         <TouchableOpacity style={styles.backBtn} onPress={onBack}>

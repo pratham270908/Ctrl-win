@@ -97,7 +97,7 @@ export function classifyDirection(
 /**
  * Human readable label for direction classification
  */
-export function getDirectionLabel(direction: DirectionClassification): string {
+export function getDirectionLabel(direction?: DirectionClassification): string {
   switch (direction) {
     case 'AHEAD':
       return 'Ahead of You';
@@ -105,6 +105,8 @@ export function getDirectionLabel(direction: DirectionClassification): string {
       return 'On Your Route';
     case 'BEHIND':
       return 'Behind You';
+    default:
+      return 'Ahead of You';
   }
 }
 
@@ -112,7 +114,7 @@ export function getDirectionLabel(direction: DirectionClassification): string {
  * Directional badge color & badge description
  */
 export function getDirectionBadgeInfo(
-  direction: DirectionClassification,
+  direction?: DirectionClassification,
   routeDeviation: number = 0
 ): { label: string; sublabel: string; color: string; bgColor: string; icon: string } {
   switch (direction) {
@@ -139,6 +141,14 @@ export function getDirectionBadgeInfo(
         color: '#F59E0B',
         bgColor: '#FFFBEB',
         icon: 'return-up-back',
+      };
+    default:
+      return {
+        label: 'AHEAD',
+        sublabel: 'Directly on your forward path',
+        color: '#10B981',
+        bgColor: '#ECFDF5',
+        icon: 'arrow-up',
       };
   }
 }

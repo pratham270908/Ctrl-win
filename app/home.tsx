@@ -5,9 +5,9 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Header } from '../components/Header';
 import { SearchBar } from '../components/SearchBar';
@@ -32,6 +32,7 @@ interface HomeScreenProps {
   onOfflineMapsPress: () => void;
   onAccessibilityPress: () => void;
   onTransportPress: () => void;
+  onMapPress?: () => void;
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
@@ -44,27 +45,62 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onOfflineMapsPress,
   onAccessibilityPress,
   onTransportPress,
+  onMapPress,
 }) => {
   const [recommendedPlaces, setRecommendedPlaces] = useState<Place[]>([]);
+  const [headingAngle, setHeadingAngle] = useState<number>(45);
   const [headingText, setHeadingText] = useState<string>('Travelling North-East');
   const [speedKmh, setSpeedKmh] = useState<number>(38);
+  const [activeFilter, setActiveFilter] = useState<'ALL' | 'AHEAD_ONLY' | 'OPEN_NOW' | 'TOP_RATED' | 'UNDER_1KM'>('ALL');
+  const [vectorFeedback, setVectorFeedback] = useState<string | null>(null);
 
   useEffect(() => {
     loadHomeData();
   }, []);
 
+  const refreshPlaces = async (
+    angle: number,
+    speed: number,
+    filter: 'ALL' | 'AHEAD_ONLY' | 'OPEN_NOW' | 'TOP_RATED' | 'UNDER_1KM'
+  ) => {
+    const places = await placesService.getRecommendedPlaces(angle, speed, filter);
+    setRecommendedPlaces(places);
+  };
+
   const loadHomeData = async () => {
-    const places = await placesService.getRecommendedPlaces();
+    const places = await placesService.getRecommendedPlaces(headingAngle, speedKmh, activeFilter);
     setRecommendedPlaces(places);
     const loc = await locationService.getCurrentLocation();
     setHeadingText(`Travelling ${loc.headingText}`);
     setSpeedKmh(loc.speedKmh);
   };
 
+  const handleVectorChange = async (angle: number, label: string) => {
+    setHeadingAngle(angle);
+    setHeadingText(label);
+    setVectorFeedback(`Vector changed to ${angle}° • Places re-calculated ahead`);
+    await refreshPlaces(angle, speedKmh, activeFilter);
+    setTimeout(() => setVectorFeedback(null), 3200);
+  };
+
+  const handleSpeedChange = async (speed: number) => {
+    setSpeedKmh(speed);
+    setVectorFeedback(`Speed set to ${speed} km/h • Reach times updated`);
+    await refreshPlaces(headingAngle, speed, activeFilter);
+    setTimeout(() => setVectorFeedback(null), 3200);
+  };
+
+  const handleFilterChange = async (
+    filter: 'ALL' | 'AHEAD_ONLY' | 'OPEN_NOW' | 'TOP_RATED' | 'UNDER_1KM'
+  ) => {
+    setActiveFilter(filter);
+    await refreshPlaces(headingAngle, speedKmh, filter);
+  };
+
   const handleSimulateHeading = () => {
     Alert.alert(
       'Simulated Direction Vector',
-      'Currently locked to 45° North-East along the Cyber Towers corridor toward Gachibowli.\n\nAll nearby places are dynamically ranked by forward trajectory.'
+      `Currently locked to ${headingAngle}° ${headingText} corridor.\n\nTap the vector chips in the card above to test other heading angles and watch places re-rank!`
     );
   };
 
@@ -76,7 +112,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <Header
         onProfilePress={onProfilePress}
         onNotificationPress={handleNotificationPress}
@@ -116,10 +152,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           ))}
         </ScrollView>
 
-        {/* Direction Indicator Visual */}
+        {/* Direction Indicator Visual with Interactive Vectors & Speed */}
         <DirectionIndicator
+          headingAngle={headingAngle}
           headingText={headingText}
           speedKmh={speedKmh}
+          onAngleChange={handleVectorChange}
+          onSpeedChange={handleSpeedChange}
           onSimulateChange={handleSimulateHeading}
         />
 
@@ -136,7 +175,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
             <TouchableOpacity
               style={styles.expandMapButton}
-              onPress={() => onPlacePress(recommendedPlaces[0] || ({} as Place))}
+              onPress={() => {
+                if (onMapPress) {
+                  onMapPress();
+                } else if (recommendedPlaces.length > 0) {
+                  onPlacePress(recommendedPlaces[0]);
+                }
+              }}
+              activeOpacity={0.75}
             >
               <Ionicons name="expand" size={16} color={COLORS.accent} />
               <Text style={styles.expandMapText}>Full Map</Text>
@@ -205,7 +251,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </TouchableOpacity>
         </View>
 
-        {/* Recommended Places Section */}
+        {/* Recommended Places Section with Interactive Dynamic Filters */}
         <View style={styles.sectionHeader}>
           <View>
             <Text style={styles.sectionTitle}>Recommended For Your Journey</Text>
@@ -215,14 +261,66 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </View>
         </View>
 
-        {recommendedPlaces.map((place) => (
-          <PlaceCard
-            key={place.id}
-            place={place}
-            onPress={onPlacePress}
-            onNavigatePress={onNavigatePress}
-          />
-        ))}
+        {/* Dynamic Vector Change Alert Banner */}
+        {vectorFeedback && (
+          <View style={styles.feedbackBanner}>
+            <Ionicons name="sparkles" size={14} color={COLORS.accent} />
+            <Text style={styles.feedbackBannerText}>{vectorFeedback}</Text>
+          </View>
+        )}
+
+        {/* Interactive Filter Pills */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterPillsRow}
+        >
+          {[
+            { id: 'ALL', label: 'All Useful' },
+            { id: 'AHEAD_ONLY', label: 'Ahead Only 🎯' },
+            { id: 'OPEN_NOW', label: 'Open Now 🟢' },
+            { id: 'TOP_RATED', label: '★ 4.5+ Rating' },
+            { id: 'UNDER_1KM', label: '< 1 km Close' },
+          ].map((pill) => {
+            const isActive = activeFilter === pill.id;
+            return (
+              <TouchableOpacity
+                key={pill.id}
+                style={[styles.filterPill, isActive && styles.filterPillActive]}
+                onPress={() => handleFilterChange(pill.id as any)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
+                  {pill.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        {/* Place Cards or Empty State */}
+        {recommendedPlaces.length === 0 ? (
+          <View style={styles.emptyFilteredBox}>
+            <Ionicons name="filter-outline" size={28} color={COLORS.textMuted} />
+            <Text style={styles.emptyFilteredTitle}>No places match this filter along current vector</Text>
+            <TouchableOpacity
+              style={styles.resetFilterBtn}
+              onPress={() => handleFilterChange('ALL')}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.resetFilterText}>Reset to All Useful</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          recommendedPlaces.map((place) => (
+            <PlaceCard
+              key={place.id}
+              place={place}
+              onPress={onPlacePress}
+              onNavigatePress={onNavigatePress}
+            />
+          ))
+        )}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -361,5 +459,82 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     textAlign: 'center',
     marginTop: 1,
+  },
+  feedbackBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 8,
+    borderRadius: RADIUS.md,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    gap: 8,
+  },
+  feedbackBannerText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.accent,
+  },
+  filterPillsRow: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.xs,
+    gap: 8,
+    marginBottom: SPACING.sm,
+  },
+  filterPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.cardBg,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    ...SHADOWS.sm,
+  },
+  filterPillActive: {
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
+  },
+  filterPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  filterPillTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  emptyFilteredBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.xl,
+    paddingHorizontal: SPACING.lg,
+    backgroundColor: COLORS.surfaceLight,
+    borderRadius: RADIUS.lg,
+    marginHorizontal: SPACING.lg,
+    marginVertical: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  emptyFilteredTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  resetFilterBtn: {
+    marginTop: 12,
+    backgroundColor: COLORS.accent,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: RADIUS.full,
+  },
+  resetFilterText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

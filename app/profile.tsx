@@ -5,10 +5,10 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Image,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../store/AuthContext';
 import { useFavorites } from '../store/FavoritesContext';
@@ -34,6 +34,10 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const { favorites } = useFavorites();
   const { reports, recentSearches } = useApp();
 
+  const safeFavorites = Array.isArray(favorites) ? favorites : [];
+  const safeRecentSearches = Array.isArray(recentSearches) ? recentSearches : [];
+  const safeReports = Array.isArray(reports) ? reports : [];
+
   const handleLogoutPress = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out from this device?', [
       { text: 'Cancel', style: 'cancel' },
@@ -51,14 +55,14 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const handleSearchesModal = () => {
     Alert.alert(
       'Recent Searches History',
-      recentSearches.length > 0
-        ? recentSearches.map((s, i) => `${i + 1}. ${s}`).join('\n')
+      safeRecentSearches.length > 0
+        ? safeRecentSearches.map((s, i) => `${i + 1}. ${s}`).join('\n')
         : 'No recent searches logged.'
     );
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Top Header */}
       <View style={styles.topHeader}>
         <View style={styles.headerInfo}>
@@ -108,7 +112,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             activeOpacity={0.8}
           >
             <Ionicons name="heart" size={20} color={COLORS.danger} />
-            <Text style={styles.statNumber}>{favorites.length}</Text>
+            <Text style={styles.statNumber}>{safeFavorites.length}</Text>
             <Text style={styles.statLabel}>Saved Places</Text>
           </TouchableOpacity>
 
@@ -118,7 +122,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             activeOpacity={0.8}
           >
             <Ionicons name="search" size={20} color={COLORS.accent} />
-            <Text style={styles.statNumber}>{recentSearches.length}</Text>
+            <Text style={styles.statNumber}>{safeRecentSearches.length}</Text>
             <Text style={styles.statLabel}>Searches</Text>
           </TouchableOpacity>
 
@@ -128,7 +132,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             activeOpacity={0.8}
           >
             <Ionicons name="flag" size={20} color={COLORS.ahead} />
-            <Text style={styles.statNumber}>{reports.length}</Text>
+            <Text style={styles.statNumber}>{safeReports.length}</Text>
             <Text style={styles.statLabel}>Reports</Text>
           </TouchableOpacity>
         </View>

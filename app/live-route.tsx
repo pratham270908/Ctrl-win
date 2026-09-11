@@ -5,8 +5,8 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { InteractiveMap } from '../components/InteractiveMap';
 import { PlaceCard } from '../components/PlaceCard';
@@ -33,7 +33,7 @@ export const LiveRouteScreen: React.FC<LiveRouteScreenProps> = ({
   }, []);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
       {/* Header */}
       <View style={styles.topHeader}>
         <TouchableOpacity style={styles.backBtn} onPress={onBack}>
@@ -83,7 +83,7 @@ export const LiveRouteScreen: React.FC<LiveRouteScreenProps> = ({
           </Text>
         </View>
 
-        {placesAhead.map((p) => (
+        {(Array.isArray(placesAhead) ? placesAhead : []).map((p) => (
           <PlaceCard key={p.id} place={p} onPress={onPlacePress} />
         ))}
 

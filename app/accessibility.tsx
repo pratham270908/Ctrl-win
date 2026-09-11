@@ -5,9 +5,9 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Switch,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { InteractiveMap } from '../components/InteractiveMap';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
@@ -42,7 +42,7 @@ export const AccessibilityScreen: React.FC<AccessibilityScreenProps> = ({
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
       {/* Header */}
       <View style={styles.topHeader}>
         <TouchableOpacity style={styles.backBtn} onPress={onBack}>
@@ -115,7 +115,7 @@ export const AccessibilityScreen: React.FC<AccessibilityScreenProps> = ({
 
             <View style={styles.toggleRow}>
               <View style={styles.toggleTextCol}>
-                <Text style={styles.toggleLabel}>Avoid Steep Inclines (> 5% Grade)</Text>
+                <Text style={styles.toggleLabel}>Avoid Steep Inclines ({'>'} 5% Grade)</Text>
                 <Text style={styles.toggleDesc}>
                   Prioritizes flatter contours even if travel distance increases slightly
                 </Text>

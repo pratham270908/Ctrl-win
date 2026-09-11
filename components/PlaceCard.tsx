@@ -20,14 +20,18 @@ export const PlaceCard: React.FC<PlaceCardProps> = ({
   compact = false,
 }) => {
   const { isFavorite, toggleFavorite } = useFavorites();
+
+  if (!place || !place.id) return null;
+
   const favorite = isFavorite(place.id);
   const badgeInfo = getDirectionBadgeInfo(place.direction, place.routeDeviation);
 
-  const formatDistance = (meters: number): string => {
-    if (meters >= 1000) {
-      return `${(meters / 1000).toFixed(1)} km`;
+  const formatDistance = (meters?: number): string => {
+    const m = meters ?? 0;
+    if (m >= 1000) {
+      return `${(m / 1000).toFixed(1)} km`;
     }
-    return `${meters} m`;
+    return `${m} m`;
   };
 
   return (
@@ -36,7 +40,7 @@ export const PlaceCard: React.FC<PlaceCardProps> = ({
       onPress={() => onPress(place)}
       activeOpacity={0.8}
       accessibilityRole="button"
-      accessibilityLabel={`${place.name}, ${badgeInfo.label}`}
+      accessibilityLabel={`${place.name || 'Place'}, ${badgeInfo.label}`}
     >
       {/* Top row: Directional Badge & Favorite Button */}
       <View style={styles.headerRow}>
@@ -50,7 +54,7 @@ export const PlaceCard: React.FC<PlaceCardProps> = ({
           <Text style={[styles.directionBadgeText, { color: badgeInfo.color }]}>
             {badgeInfo.label}
           </Text>
-          {place.routeDeviation > 0 && place.direction === 'ON_ROUTE' && (
+          {(place.routeDeviation ?? 0) > 0 && place.direction === 'ON_ROUTE' && (
             <Text style={[styles.deviationText, { color: badgeInfo.color }]}>
               • +{place.routeDeviation}m
             </Text>
@@ -86,8 +90,8 @@ export const PlaceCard: React.FC<PlaceCardProps> = ({
       <View style={styles.metricsRow}>
         <View style={styles.ratingBadge}>
           <Ionicons name="star" size={13} color="#F59E0B" />
-          <Text style={styles.ratingText}>{place.rating.toFixed(1)}</Text>
-          <Text style={styles.reviewCount}>({place.reviewCount})</Text>
+          <Text style={styles.ratingText}>{(place.rating ?? 0).toFixed(1)}</Text>
+          <Text style={styles.reviewCount}>({place.reviewCount ?? 0})</Text>
         </View>
 
         <View style={styles.dotSeparator} />

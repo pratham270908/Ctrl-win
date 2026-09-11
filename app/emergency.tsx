@@ -5,9 +5,9 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { EmergencyCard } from '../components/EmergencyCard';
 import { placesService } from '../services/placesService';
@@ -40,7 +40,8 @@ export const EmergencyScreen: React.FC<EmergencyScreenProps> = ({
     );
   };
 
-  const filteredList = emergencyPlaces.filter((p) => {
+  const filteredList = (Array.isArray(emergencyPlaces) ? emergencyPlaces : []).filter((p) => {
+    if (!p || !p.id) return false;
     if (activeFilter === 'ALL') return true;
     if (activeFilter === 'HOSPITAL') return p.category === 'Hospital';
     if (activeFilter === 'PHARMACY') return p.category === 'Pharmacy';
@@ -48,7 +49,7 @@ export const EmergencyScreen: React.FC<EmergencyScreenProps> = ({
   });
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
       {/* Top Red Alert Header */}
       <View style={styles.topHeader}>
         <TouchableOpacity style={styles.backBtn} onPress={onBack}>

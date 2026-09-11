@@ -5,10 +5,10 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Share,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Place } from '../types';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
@@ -28,13 +28,32 @@ export const PlaceDetailsScreen: React.FC<PlaceDetailsScreenProps> = ({
   onDirectionsPress,
 }) => {
   const { isFavorite, toggleFavorite } = useFavorites();
+
+  if (!place || !place.id) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
+        <View style={styles.topBar}>
+          <TouchableOpacity style={styles.circleBtn} onPress={onBack}>
+            <Ionicons name="arrow-back" size={20} color={COLORS.textPrimary} />
+          </TouchableOpacity>
+        </View>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <Ionicons name="alert-circle-outline" size={48} color={COLORS.textMuted} />
+          <Text style={{ marginTop: 12, fontSize: 16, color: COLORS.textSecondary, textAlign: 'center' }}>
+            Location details unavailable. Please select a valid place along your journey.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   const favorite = isFavorite(place.id);
   const badgeInfo = getDirectionBadgeInfo(place.direction, place.routeDeviation);
 
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `${place.name} is ${place.distance}m ahead on your journey (${place.travelTime} min). Address: ${place.address}`,
+        message: `${place.name || 'Place'} is ${place.distance || 0}m ahead on your journey (${place.travelTime || 0} min). Address: ${place.address || ''}`,
       });
     } catch {
       // Ignore
@@ -44,20 +63,21 @@ export const PlaceDetailsScreen: React.FC<PlaceDetailsScreenProps> = ({
   const handleCall = () => {
     Alert.alert(
       'Call Place',
-      `Calling ${place.name} at ${place.phone}.\n\n(Simulated for mobile prototype)`,
+      `Calling ${place.name} at ${place.phone || 'N/A'}.\n\n(Simulated for mobile prototype)`,
       [{ text: 'Dismiss', style: 'cancel' }]
     );
   };
 
-  const formatDistance = (meters: number): string => {
-    if (meters >= 1000) {
-      return `${(meters / 1000).toFixed(1)} km`;
+  const formatDistance = (meters?: number): string => {
+    const m = meters ?? 0;
+    if (m >= 1000) {
+      return `${(m / 1000).toFixed(1)} km`;
     }
-    return `${meters} m`;
+    return `${m} m`;
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
       {/* Top Floating App Bar */}
       <View style={styles.topBar}>
         <TouchableOpacity
@@ -147,9 +167,9 @@ export const PlaceDetailsScreen: React.FC<PlaceDetailsScreenProps> = ({
             <View style={styles.metricCol}>
               <View style={styles.metricHeader}>
                 <Ionicons name="star" size={16} color="#F59E0B" />
-                <Text style={styles.metricVal}>{place.rating.toFixed(1)}</Text>
+                <Text style={styles.metricVal}>{(place.rating ?? 0).toFixed(1)}</Text>
               </View>
-              <Text style={styles.metricSub}>{place.reviewCount} reviews</Text>
+              <Text style={styles.metricSub}>{place.reviewCount ?? 0} reviews</Text>
             </View>
 
             <View style={styles.verticalDivider} />
@@ -167,7 +187,7 @@ export const PlaceDetailsScreen: React.FC<PlaceDetailsScreenProps> = ({
             <View style={styles.metricCol}>
               <View style={styles.metricHeader}>
                 <Ionicons name="time" size={16} color={COLORS.ahead} />
-                <Text style={styles.metricVal}>{place.travelTime} min</Text>
+                <Text style={styles.metricVal}>{place.travelTime ?? 0} min</Text>
               </View>
               <Text style={styles.metricSub}>Drive time</Text>
             </View>
@@ -179,7 +199,7 @@ export const PlaceDetailsScreen: React.FC<PlaceDetailsScreenProps> = ({
               <Ionicons name="location-outline" size={20} color={COLORS.accent} style={styles.infoIcon} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.infoLabel}>Address</Text>
-                <Text style={styles.infoValue}>{place.address}</Text>
+                <Text style={styles.infoValue}>{place.address || 'Address on corridor'}</Text>
               </View>
             </View>
 
@@ -187,7 +207,7 @@ export const PlaceDetailsScreen: React.FC<PlaceDetailsScreenProps> = ({
               <Ionicons name="alarm-outline" size={20} color={COLORS.accent} style={styles.infoIcon} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.infoLabel}>Operating Hours</Text>
-                <Text style={styles.infoValue}>{place.hours}</Text>
+                <Text style={styles.infoValue}>{place.hours || 'Standard business hours'}</Text>
               </View>
             </View>
 
@@ -195,7 +215,7 @@ export const PlaceDetailsScreen: React.FC<PlaceDetailsScreenProps> = ({
               <Ionicons name="call-outline" size={20} color={COLORS.accent} style={styles.infoIcon} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.infoLabel}>Contact Phone</Text>
-                <Text style={styles.infoValue}>{place.phone}</Text>
+                <Text style={styles.infoValue}>{place.phone || 'Phone not listed'}</Text>
               </View>
             </View>
           </View>
@@ -203,14 +223,14 @@ export const PlaceDetailsScreen: React.FC<PlaceDetailsScreenProps> = ({
           {/* Description */}
           <View style={styles.infoSection}>
             <Text style={styles.sectionHeaderTitle}>About This Stop</Text>
-            <Text style={styles.descriptionText}>{place.description}</Text>
+            <Text style={styles.descriptionText}>{place.description || 'Verified place along journey vector.'}</Text>
           </View>
 
           {/* Services & Amenities */}
           <View style={styles.infoSection}>
             <Text style={styles.sectionHeaderTitle}>Available Services</Text>
             <View style={styles.servicesWrap}>
-              {place.services.map((service, index) => (
+              {(place.services || []).map((service, index) => (
                 <View key={index} style={styles.serviceChip}>
                   <Ionicons name="checkmark-circle" size={14} color={COLORS.ahead} />
                   <Text style={styles.serviceChipText}>{service}</Text>

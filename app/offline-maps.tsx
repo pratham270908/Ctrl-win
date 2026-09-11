@@ -5,9 +5,9 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../store/AppContext';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
@@ -48,11 +48,12 @@ export const OfflineMapsScreen: React.FC<OfflineMapsScreenProps> = ({ onBack }) 
     }
   };
 
-  const downloadedList = offlineAreas.filter((a) => a.downloaded);
-  const availableList = offlineAreas.filter((a) => !a.downloaded);
+  const safeAreas = Array.isArray(offlineAreas) ? offlineAreas : [];
+  const downloadedList = safeAreas.filter((a) => a.downloaded);
+  const availableList = safeAreas.filter((a) => !a.downloaded);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
       {/* Top Header */}
       <View style={styles.topHeader}>
         <TouchableOpacity style={styles.backBtn} onPress={onBack}>

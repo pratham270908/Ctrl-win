@@ -5,9 +5,9 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { PlaceCard } from '../components/PlaceCard';
 import { InteractiveMap } from '../components/InteractiveMap';
@@ -68,14 +68,13 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
     }
   };
 
-  const allPlaces = [
-    ...groupedData.ahead,
-    ...groupedData.onRoute,
-    ...groupedData.behind,
-  ];
+  const aheadList = Array.isArray(groupedData.ahead) ? groupedData.ahead.filter((p) => p && p.id) : [];
+  const onRouteList = Array.isArray(groupedData.onRoute) ? groupedData.onRoute.filter((p) => p && p.id) : [];
+  const behindList = Array.isArray(groupedData.behind) ? groupedData.behind.filter((p) => p && p.id) : [];
+  const allPlaces = [...aheadList, ...onRouteList, ...behindList];
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
       {/* Top Header Row */}
       <View style={styles.topHeader}>
         <TouchableOpacity
@@ -124,7 +123,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
         <View style={styles.summaryBadge}>
           <Ionicons name="compass" size={14} color={COLORS.accent} />
           <Text style={styles.summaryText}>
-            {groupedData.ahead.length} Ahead • {groupedData.onRoute.length} On Route
+            {aheadList.length} Ahead • {onRouteList.length} On Route
           </Text>
         </View>
 
@@ -182,14 +181,14 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
               <Ionicons name="arrow-up-circle" size={16} color={COLORS.ahead} />
               <Text style={styles.sectionTitleAhead}>AHEAD OF YOU</Text>
             </View>
-            <Text style={styles.sectionBadgeCount}>{groupedData.ahead.length} places</Text>
+            <Text style={styles.sectionBadgeCount}>{aheadList.length} places</Text>
           </View>
           <Text style={styles.sectionExplainer}>
             Directly in your line of travel. Zero turnaround time required.
           </Text>
 
-          {groupedData.ahead.length > 0 ? (
-            groupedData.ahead.map((place) => (
+          {aheadList.length > 0 ? (
+            aheadList.map((place) => (
               <PlaceCard
                 key={place.id}
                 place={place}
@@ -209,14 +208,14 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
               <Ionicons name="navigate-circle" size={16} color={COLORS.onRoute} />
               <Text style={styles.sectionTitleRoute}>ON YOUR ROUTE</Text>
             </View>
-            <Text style={styles.sectionBadgeCount}>{groupedData.onRoute.length} places</Text>
+            <Text style={styles.sectionBadgeCount}>{onRouteList.length} places</Text>
           </View>
           <Text style={styles.sectionExplainer}>
             Along the route corridor with minimal stopover deviation (+1 to 2 min).
           </Text>
 
-          {groupedData.onRoute.length > 0 ? (
-            groupedData.onRoute.map((place) => (
+          {onRouteList.length > 0 ? (
+            onRouteList.map((place) => (
               <PlaceCard
                 key={place.id}
                 place={place}
@@ -236,14 +235,14 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
               <Ionicons name="alert-circle" size={16} color={COLORS.behind} />
               <Text style={styles.sectionTitleBehind}>BEHIND YOU (Requires going back)</Text>
             </View>
-            <Text style={styles.sectionBadgeCount}>{groupedData.behind.length} places</Text>
+            <Text style={styles.sectionBadgeCount}>{behindList.length} places</Text>
           </View>
           <Text style={styles.sectionExplainer}>
             Located behind your current heading. Requires making a U-turn or back-tracking.
           </Text>
 
-          {groupedData.behind.length > 0 ? (
-            groupedData.behind.map((place) => (
+          {behindList.length > 0 ? (
+            behindList.map((place) => (
               <PlaceCard
                 key={place.id}
                 place={place}

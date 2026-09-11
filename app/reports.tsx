@@ -5,10 +5,10 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   TextInput,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../store/AppContext';
 import { UserReport } from '../types';
@@ -76,7 +76,7 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({ onBack }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Top Header */}
       <View style={styles.topHeader}>
         {onBack && (
@@ -159,10 +159,10 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({ onBack }) => {
         {/* SECTION: PREVIOUS ACTIVITY LOGS */}
         <Text style={styles.sectionHeaderTitle}>Your Activity History</Text>
         <Text style={styles.sectionSubtitle}>
-          {reports.length} reports logged locally on this device
+          {(Array.isArray(reports) ? reports : []).length} reports logged locally on this device
         </Text>
 
-        {reports.map((rep) => {
+        {(Array.isArray(reports) ? reports : []).map((rep) => {
           const badge = getStatusBadge(rep.status);
           return (
             <View key={rep.id} style={styles.reportItemCard}>

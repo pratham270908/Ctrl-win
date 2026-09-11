@@ -144,11 +144,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sceneryBackground: {
-    ...StyleSheet.absoluteFillObject,
+    ...(StyleSheet.absoluteFill as any),
     overflow: 'hidden',
   },
   starsRow: {
-    ...StyleSheet.absoluteFillObject,
+    ...(StyleSheet.absoluteFill as any),
   },
   star: {
     position: 'absolute',
