@@ -13,8 +13,10 @@ import { directionsService, TurnInstruction } from '../services/directionsServic
 import { locationService } from '../services/locationService';
 import { recommendationService } from '../services/recommendationService';
 import { useApp } from '../store/AppContext';
-import { Place, RouteOption } from '../types';
+import { Place, RouteOption, Coordinates, UserLocation } from '../types';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
+import { calculateRouteProgress, calculateDistanceMeters } from '../utils/directionUtils';
+import { APP_CONFIG } from '../constants/config';
 
 interface NavigationScreenProps {
   destinationPlace?: Place | null;
@@ -35,85 +37,159 @@ export const NavigationScreen: React.FC<NavigationScreenProps> = ({
   const [instructions, setInstructions] = useState<TurnInstruction[]>([]);
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
   const [isMuted, setIsMuted] = useState<boolean>(!settings.voiceGuidance);
-  const [isSimulating, setIsSimulating] = useState<boolean>(true);
-  const [progressPercent, setProgressPercent] = useState<number>(5);
-  const progressRef = useRef<number>(5);
-  const [currentHeading, setCurrentHeading] = useState<number>(45);
-  const [currentSpeed, setCurrentSpeed] = useState<number>(42);
+
+  // User location and navigation progress - driven STRICTLY by actual GPS
+  const [userLocation, setUserLocation] = useState<Coordinates>(() => {
+    return locationService.getCoordinates();
+  });
+  const [progressPercent, setProgressPercent] = useState<number>(0);
+  const [remainingMeters, setRemainingMeters] = useState<number>(() => {
+    return Math.round((activeRoute?.distanceKm ?? 2.4) * 1000);
+  });
+  const [currentHeading, setCurrentHeading] = useState<number>(() => {
+    return APP_CONFIG.defaultLocation.heading || 45;
+  });
+  const [currentSpeed, setCurrentSpeed] = useState<number>(() => {
+    return APP_CONFIG.defaultLocation.speedKmh || 0;
+  });
   const [routePlaces, setRoutePlaces] = useState<Place[]>([]);
   const [detourTaken, setDetourTaken] = useState<boolean>(false);
   const [showDetourOffer, setShowDetourOffer] = useState<boolean>(true);
+
   // Capture the route polyline at navigation start — stays constant during the session
-  const [navRoutePolyline] = useState<import('../types').Coordinates[]>(() => {
+  const [navRoutePolyline] = useState<Coordinates[]>(() => {
     if (activeRoute?.coordinates && activeRoute.coordinates.length > 0) {
       return activeRoute.coordinates;
     }
     return directionsService.getActiveRoutePolyline();
   });
 
+  const destCoords: Coordinates =
+    destinationPlace?.coordinates ||
+    (navRoutePolyline.length > 0
+      ? navRoutePolyline[navRoutePolyline.length - 1]
+      : {
+          latitude: APP_CONFIG.defaultDestination.latitude,
+          longitude: APP_CONFIG.defaultDestination.longitude,
+        });
+
   const destName = destinationPlace?.name || 'Gachibowli Tech Campus';
+  const hasArrivedRef = useRef<boolean>(false);
+  const isMountedRef = useRef<boolean>(true);
+  const instructionsRef = useRef<TurnInstruction[]>([]);
+  instructionsRef.current = instructions;
+
+  // Calculates navigation progress derived strictly from actual GPS coordinates
+  const updateNavigationProgress = (loc: { latitude: number; longitude: number; heading?: number; speedKmh?: number }) => {
+    if (!isMountedRef.current) return;
+
+    const currentCoords = { latitude: loc.latitude, longitude: loc.longitude };
+    setUserLocation(currentCoords);
+
+    // Calculate orthogonal route progress based exclusively on actual coordinates
+    const progress = calculateRouteProgress(currentCoords, navRoutePolyline, destCoords);
+
+    setProgressPercent(progress.progressPercent);
+    setRemainingMeters(progress.remainingDistanceMeters);
+
+    if (typeof loc.heading === 'number' && loc.heading >= 0) {
+      setCurrentHeading(loc.heading);
+    } else if (progress.bearingAlongSegment) {
+      setCurrentHeading(progress.bearingAlongSegment);
+    }
+
+    if (typeof loc.speedKmh === 'number') {
+      setCurrentSpeed(loc.speedKmh);
+    }
+
+    // Advance turn step along the route as user progresses physically
+    const instList = instructionsRef.current;
+    if (instList.length > 0) {
+      const stepIdx = Math.min(
+        instList.length - 1,
+        Math.floor((progress.progressPercent / 100) * instList.length)
+      );
+      setCurrentStepIndex(stepIdx);
+    }
+
+    // Destination arrival check: ONLY triggered when actual GPS location is within arrival threshold
+    const ARRIVAL_THRESHOLD_METERS = 35;
+    if (progress.distanceToDestinationMeters <= ARRIVAL_THRESHOLD_METERS && !hasArrivedRef.current) {
+      hasArrivedRef.current = true;
+      Alert.alert(
+        'Destination Reached! 🎉',
+        `You have arrived safely at ${destName}.`,
+        [{ text: 'Complete Journey', onPress: onEndNavigation }]
+      );
+    }
+  };
 
   useEffect(() => {
-    directionsService.getTurnByTurnInstructions().then(setInstructions);
+    isMountedRef.current = true;
+
+    directionsService.getTurnByTurnInstructions().then((inst) => {
+      if (isMountedRef.current) {
+        setInstructions(inst);
+        instructionsRef.current = inst;
+      }
+    });
+
     recommendationService
       .getRouteRecommendations({
         destinationPlace,
         activeRoute,
-        headingAngle: 45,
-        speedKmh: 42,
+        headingAngle: currentHeading,
+        speedKmh: currentSpeed,
         filterOption: 'ALL',
       })
-      .then(setRoutePlaces);
+      .then((places) => {
+        if (isMountedRef.current) {
+          setRoutePlaces(places);
+        }
+      });
+
+    return () => {
+      isMountedRef.current = false;
+    };
   }, [destinationPlace, activeRoute]);
 
-  // Progress simulation loop — updates UI state only, NEVER moves GPS coordinates
+  // Real GPS tracking and location listener — NO timers, NO simulated movement
   useEffect(() => {
-    if (!isSimulating) return;
+    isMountedRef.current = true;
 
-    const interval = setInterval(() => {
-      const prev = progressRef.current;
-      const next = prev + 1.5;
+    // Initialize with current location
+    const initialCoords = locationService.getCoordinates();
+    updateNavigationProgress({
+      latitude: initialCoords.latitude,
+      longitude: initialCoords.longitude,
+    });
 
-      if (next >= 100) {
-        progressRef.current = 100;
-        setProgressPercent(100);
-        setIsSimulating(false);
-        Alert.alert(
-          'Destination Reached! 🎉',
-          `You have arrived safely at ${destName}.`,
-          [{ text: 'Complete Journey', onPress: onEndNavigation }]
-        );
-        return;
+    // Request immediate GPS fix from device
+    locationService.getCurrentLocation().then((loc) => {
+      if (isMountedRef.current && loc) {
+        updateNavigationProgress(loc);
       }
+    });
 
-      progressRef.current = next;
-      setProgressPercent(next);
+    // Start GPS watch and subscribe to live location updates
+    let stopWatching: (() => void) | null = null;
+    locationService.startWatchingLocation().then((cleanup) => {
+      stopWatching = cleanup;
+    });
 
-      // Dynamically update instruction step based on progress
-      const stepCount = instructions.length > 0 ? instructions.length : 4;
-      const stepIdx = Math.min(stepCount - 1, Math.floor((next / 100) * stepCount));
-      setCurrentStepIndex(stepIdx);
+    const unsubscribe = locationService.subscribe((loc: UserLocation) => {
+      if (!isMountedRef.current) return;
+      updateNavigationProgress(loc);
+    });
 
-      // Realistic heading angles along route corridor (UI display only)
-      let heading = 45;
-      if (next < 25) heading = 45;
-      else if (next < 55) heading = 65;
-      else if (next < 80) heading = 38;
-      else heading = 25;
-      setCurrentHeading(heading);
-
-      // Dynamic speed variations (UI display only)
-      const speeds = [38, 45, 52, 48, 56, 42];
-      const spd = speeds[Math.floor(next / 18) % speeds.length];
-      setCurrentSpeed(spd);
-
-      // NOTE: User geographic position is NOT updated here.
-      // Current location is driven exclusively by real GPS updates
-      // (or stays at the default prototype location when GPS is unavailable).
-    }, 600);
-
-    return () => clearInterval(interval);
-  }, [isSimulating, instructions, destName, onEndNavigation]);
+    return () => {
+      isMountedRef.current = false;
+      unsubscribe();
+      if (stopWatching) {
+        stopWatching();
+      }
+    };
+  }, [navRoutePolyline, destCoords, destName]);
 
   const currentInstruction = instructions[currentStepIndex] || {
     instruction: 'Continue straight',
@@ -122,18 +198,40 @@ export const NavigationScreen: React.FC<NavigationScreenProps> = ({
     streetName: 'Cyber Towers Flyover',
   };
 
-  const totalMeters = (activeRoute?.distanceKm ?? 2.1) * 1000;
-  const remainingMeters = Math.max(0, Math.round(totalMeters * (1 - progressPercent / 100)));
+  const totalRouteMeters = (activeRoute?.distanceKm && activeRoute.distanceKm > 0)
+    ? Math.round(activeRoute.distanceKm * 1000)
+    : Math.max(1, remainingMeters);
+
+  const totalRouteMinutes = detourTaken
+    ? Math.max(2, (activeRoute?.estimatedMinutes ?? 8) - 3)
+    : activeRoute?.estimatedMinutes ?? 8;
+
+  const fractionRemaining = totalRouteMeters > 0
+    ? Math.max(0, Math.min(1, remainingMeters / totalRouteMeters))
+    : 0;
+
+  const ARRIVAL_THRESHOLD_METERS = 35;
+  const remainingMinutes = remainingMeters <= ARRIVAL_THRESHOLD_METERS
+    ? 0
+    : Math.max(1, Math.round(totalRouteMinutes * fractionRemaining));
+
+  const remainingTime = `${remainingMinutes} min`;
+
   const remainingDist =
     remainingMeters >= 1000
       ? `${(remainingMeters / 1000).toFixed(1)} km`
       : `${remainingMeters} m`;
 
-  const totalMin = detourTaken
-    ? Math.max(2, (activeRoute?.estimatedMinutes ?? 8) - 3)
-    : activeRoute?.estimatedMinutes ?? 8;
-  const remainingMinutes = Math.max(1, Math.round(totalMin * (1 - progressPercent / 100)));
-  const remainingTime = `${remainingMinutes} min`;
+  const formatEtaClockTime = (mins: number) => {
+    const eta = new Date(Date.now() + mins * 60000);
+    let h = eta.getHours();
+    const m = eta.getMinutes();
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    return `${h}:${m < 10 ? '0' : ''}${m} ${ampm}`;
+  };
+
+  const etaDisplay = `• ETA ${formatEtaClockTime(remainingMinutes)}${detourTaken ? ' (-3m)' : ''}`;
 
   const handleToggleMute = async () => {
     const nextState = !isMuted;
@@ -148,7 +246,7 @@ export const NavigationScreen: React.FC<NavigationScreenProps> = ({
   };
 
   const handleRecenter = () => {
-    Alert.alert('Location Centered', 'Re-aligned camera to your vehicle vector (45° NE).');
+    Alert.alert('Location Centered', `Re-aligned camera to your vehicle position (${currentHeading}°).`);
   };
 
   const handleNextStep = () => {
@@ -164,17 +262,6 @@ export const NavigationScreen: React.FC<NavigationScreenProps> = ({
   const handlePrevStep = () => {
     if (currentStepIndex > 0) {
       setCurrentStepIndex(currentStepIndex - 1);
-    }
-  };
-
-  const handleToggleSimulation = () => {
-    const next = !isSimulating;
-    setIsSimulating(next);
-    if (next) {
-      Alert.alert(
-        'Auto-Drive Simulation Started',
-        'Your simulated journey is now advancing through turns and updating speed in real-time.'
-      );
     }
   };
 
@@ -311,6 +398,7 @@ export const NavigationScreen: React.FC<NavigationScreenProps> = ({
           onRecenter={handleRecenter}
           userHeading={currentHeading}
           showSimulationBadge={true}
+          userLocation={userLocation}
         />
 
         {/* Floating Ahead Speed & Trajectory HUD with Simulation & Speed Cycler */}
@@ -320,19 +408,24 @@ export const NavigationScreen: React.FC<NavigationScreenProps> = ({
             <Text style={styles.hudText}>{`VECTOR ${currentHeading}° • ${progressPercent.toFixed(0)}%`}</Text>
           </View>
 
-          {/* Interactive Auto-Drive Simulation Toggle */}
+          {/* Real GPS Tracking Mode Indicator */}
           <TouchableOpacity
-            style={[styles.simControlBtn, isSimulating && styles.simControlBtnActive]}
-            onPress={handleToggleSimulation}
+            style={[styles.simControlBtn, styles.simControlBtnActive]}
+            onPress={() => {
+              Alert.alert(
+                'Live GPS Tracking Active',
+                'Navigation progress is driven directly by your physical location. Remaining distance and ETA will only update when you move.'
+              );
+            }}
             activeOpacity={0.75}
           >
             <Ionicons
-              name={isSimulating ? 'pause' : 'play'}
+              name="locate"
               size={13}
               color="#FFFFFF"
             />
             <Text style={styles.simControlText}>
-              {isSimulating ? 'Pause Drive' : 'Auto Drive'}
+              GPS Active
             </Text>
           </TouchableOpacity>
 
@@ -376,7 +469,7 @@ export const NavigationScreen: React.FC<NavigationScreenProps> = ({
             <View style={styles.timeWrap}>
               <Text style={styles.timeNum}>{remainingTime}</Text>
               <Text style={styles.etaText}>
-                • ETA {detourTaken ? '1:12 PM (-3m)' : '1:15 PM'}
+                {etaDisplay}
               </Text>
             </View>
             <Text style={styles.distText}>
@@ -386,11 +479,11 @@ export const NavigationScreen: React.FC<NavigationScreenProps> = ({
 
           <View style={styles.statusIndicator}>
             <Ionicons
-              name={isSimulating ? 'pulse' : 'checkmark-circle'}
+              name="checkmark-circle"
               size={18}
               color={COLORS.ahead}
             />
-            <Text style={styles.statusText}>{isSimulating ? 'Cruising' : 'On Path'}</Text>
+            <Text style={styles.statusText}>{currentSpeed > 5 ? 'Cruising' : 'On Path'}</Text>
           </View>
         </View>
 

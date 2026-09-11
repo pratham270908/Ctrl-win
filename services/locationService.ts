@@ -36,6 +36,7 @@ class LocationService implements ILocationService {
   private isGpsActive: boolean = false;
   private listeners: Set<(loc: UserLocation) => void> = new Set();
   private watchSubscription: Location.LocationSubscription | null = null;
+  private watchCount: number = 0;
 
   /**
    * Subscribes a listener callback to location updates
@@ -120,56 +121,56 @@ class LocationService implements ILocationService {
         }
       }
 
-      if (this.watchSubscription) {
-        return () => {
-          this.watchSubscription?.remove();
-          this.watchSubscription = null;
-        };
+      this.watchCount++;
+
+      if (!this.watchSubscription) {
+        this.watchSubscription = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.High,
+            timeInterval: 2500,
+            distanceInterval: 4,
+          },
+          async (loc) => {
+            if (!loc || !loc.coords) return;
+            this.isGpsActive = true;
+
+            const headingDeg =
+              typeof loc.coords.heading === 'number' && loc.coords.heading >= 0
+                ? Math.round(loc.coords.heading)
+                : this.currentLocation.heading;
+
+            const speed =
+              typeof loc.coords.speed === 'number' && loc.coords.speed > 0
+                ? Math.round(loc.coords.speed * 3.6)
+                : this.currentLocation.speedKmh;
+
+            let label = this.currentLocation.label;
+            const revLabel = await this.reverseGeocode(loc.coords.latitude, loc.coords.longitude);
+            if (revLabel) {
+              label = revLabel;
+            }
+
+            this.currentLocation = {
+              latitude: loc.coords.latitude,
+              longitude: loc.coords.longitude,
+              heading: headingDeg,
+              headingText: getHeadingTextFromDegrees(headingDeg),
+              speedKmh: speed,
+              accuracyMeters: Math.round(loc.coords.accuracy ?? 5),
+              label,
+            };
+
+            this.notifyListeners();
+          }
+        );
       }
 
-      this.watchSubscription = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.High,
-          timeInterval: 2500,
-          distanceInterval: 4,
-        },
-        async (loc) => {
-          if (!loc || !loc.coords) return;
-          this.isGpsActive = true;
-
-          const headingDeg =
-            typeof loc.coords.heading === 'number' && loc.coords.heading >= 0
-              ? Math.round(loc.coords.heading)
-              : this.currentLocation.heading;
-
-          const speed =
-            typeof loc.coords.speed === 'number' && loc.coords.speed > 0
-              ? Math.round(loc.coords.speed * 3.6)
-              : this.currentLocation.speedKmh;
-
-          let label = this.currentLocation.label;
-          const revLabel = await this.reverseGeocode(loc.coords.latitude, loc.coords.longitude);
-          if (revLabel) {
-            label = revLabel;
-          }
-
-          this.currentLocation = {
-            latitude: loc.coords.latitude,
-            longitude: loc.coords.longitude,
-            heading: headingDeg,
-            headingText: getHeadingTextFromDegrees(headingDeg),
-            speedKmh: speed,
-            accuracyMeters: Math.round(loc.coords.accuracy ?? 5),
-            label,
-          };
-
-          this.notifyListeners();
-        }
-      );
-
       return () => {
-        this.watchSubscription?.remove();
-        this.watchSubscription = null;
+        this.watchCount = Math.max(0, this.watchCount - 1);
+        if (this.watchCount === 0 && this.watchSubscription) {
+          this.watchSubscription.remove();
+          this.watchSubscription = null;
+        }
       };
     } catch {
       return () => {};

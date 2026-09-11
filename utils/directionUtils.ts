@@ -152,3 +152,123 @@ export function getDirectionBadgeInfo(
       };
   }
 }
+
+export interface RouteProgressResult {
+  closestSegmentIndex: number;
+  remainingDistanceMeters: number;
+  progressPercent: number; // 0 to 100
+  distanceToDestinationMeters: number;
+  bearingAlongSegment: number;
+}
+
+/**
+ * Calculates user's progress along active route polyline and remaining route distance.
+ * Based on orthogonal projection onto the closest polyline segment.
+ * If user does not move, remaining distance and progress stay unchanged.
+ */
+export function calculateRouteProgress(
+  currentLocation: Coordinates,
+  polyline: Coordinates[],
+  fallbackDestination?: Coordinates
+): RouteProgressResult {
+  const destCoords: Coordinates =
+    polyline && polyline.length > 0
+      ? polyline[polyline.length - 1]
+      : (fallbackDestination || currentLocation);
+
+  const directDistToDest = calculateDistanceMeters(currentLocation, destCoords);
+
+  if (!polyline || polyline.length < 2) {
+    return {
+      closestSegmentIndex: 0,
+      remainingDistanceMeters: directDistToDest,
+      progressPercent: directDistToDest < 35 ? 100 : 0,
+      distanceToDestinationMeters: directDistToDest,
+      bearingAlongSegment: 45,
+    };
+  }
+
+  const numSegments = polyline.length - 1;
+  const segLengths: number[] = new Array(numSegments);
+  let totalRouteMeters = 0;
+  for (let i = 0; i < numSegments; i++) {
+    const len = calculateDistanceMeters(polyline[i], polyline[i + 1]);
+    segLengths[i] = len;
+    totalRouteMeters += len;
+  }
+
+  if (totalRouteMeters <= 0) {
+    return {
+      closestSegmentIndex: 0,
+      remainingDistanceMeters: 0,
+      progressPercent: 100,
+      distanceToDestinationMeters: directDistToDest,
+      bearingAlongSegment: 45,
+    };
+  }
+
+  let minDistanceToSegment = Infinity;
+  let bestSegmentIndex = 0;
+  let bestT = 0;
+
+  for (let i = 0; i < numSegments; i++) {
+    const p1 = polyline[i];
+    const p2 = polyline[i + 1];
+
+    const midLatRad = ((p1.latitude + p2.latitude) / 2) * (Math.PI / 180);
+    const cosLat = Math.cos(midLatRad);
+
+    const dx = (p2.longitude - p1.longitude) * 111320 * cosLat;
+    const dy = (p2.latitude - p1.latitude) * 111320;
+    const px = (currentLocation.longitude - p1.longitude) * 111320 * cosLat;
+    const py = (currentLocation.latitude - p1.latitude) * 111320;
+
+    const segLenSq = dx * dx + dy * dy;
+    let t = 0;
+    if (segLenSq > 0.0001) {
+      t = (px * dx + py * dy) / segLenSq;
+    }
+    const clampedT = Math.max(0, Math.min(1, t));
+
+    const projLat = p1.latitude + clampedT * (p2.latitude - p1.latitude);
+    const projLng = p1.longitude + clampedT * (p2.longitude - p1.longitude);
+
+    const dist = calculateDistanceMeters(currentLocation, {
+      latitude: projLat,
+      longitude: projLng,
+    });
+
+    if (dist < minDistanceToSegment) {
+      minDistanceToSegment = dist;
+      bestSegmentIndex = i;
+      bestT = clampedT;
+    }
+  }
+
+  // Calculate remaining distance along the route from the projected point to destination
+  let remainingMeters = (1 - bestT) * segLengths[bestSegmentIndex];
+  for (let j = bestSegmentIndex + 1; j < numSegments; j++) {
+    remainingMeters += segLengths[j];
+  }
+
+  remainingMeters = Math.max(0, Math.round(remainingMeters));
+
+  const traveledMeters = totalRouteMeters - remainingMeters;
+  const progressPercent = Math.max(
+    0,
+    Math.min(100, (traveledMeters / totalRouteMeters) * 100)
+  );
+
+  const pStart = polyline[bestSegmentIndex];
+  const pEnd = polyline[bestSegmentIndex + 1];
+  const bearing = Math.round(calculateBearing(pStart, pEnd));
+
+  return {
+    closestSegmentIndex: bestSegmentIndex,
+    remainingDistanceMeters: remainingMeters,
+    progressPercent,
+    distanceToDestinationMeters: directDistToDest,
+    bearingAlongSegment: bearing,
+  };
+}
+
