@@ -158,14 +158,14 @@ class VoiceAiService {
   /**
    * Request microphone permission safely with required diagnostics logging
    */
-  public async ensureMicrophonePermission(): Promise<{ granted: boolean; error?: string }> {
-    console.log('[SpecFinder AI] Requesting microphone permission');
+  public async ensureMicrophonePermission(): Promise<{ granted: boolean; canAskAgain: boolean; error?: string }> {
+    console.log('[SpecFinder AI] Checking microphone permission');
     try {
       if (Platform.OS === 'android') {
         const hasPerm = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
         if (hasPerm) {
           console.log('[SpecFinder AI] Microphone permission: GRANTED');
-          return { granted: true };
+          return { granted: true, canAskAgain: true };
         }
 
         const res = await PermissionsAndroid.request(
@@ -180,12 +180,14 @@ class VoiceAiService {
 
         if (res === PermissionsAndroid.RESULTS.GRANTED) {
           console.log('[SpecFinder AI] Microphone permission: GRANTED');
-          return { granted: true };
+          return { granted: true, canAskAgain: true };
         } else {
           console.log('[SpecFinder AI] Microphone permission: DENIED');
+          const isPermanent = res === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN;
           return {
             granted: false,
-            error: 'Microphone permission DENIED by user. Please enable microphone permission in Android device settings.',
+            canAskAgain: !isPermanent,
+            error: 'Microphone permission is required for SpecFinder AI.',
           };
         }
       }
@@ -196,37 +198,38 @@ class VoiceAiService {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             stream.getTracks().forEach((t) => t.stop());
             console.log('[SpecFinder AI] Microphone permission: GRANTED');
-            return { granted: true };
+            return { granted: true, canAskAgain: true };
           } catch (e: any) {
             console.log('[SpecFinder AI] Microphone permission: DENIED');
-            return { granted: false, error: 'Microphone permission denied by browser.' };
+            return { granted: false, canAskAgain: false, error: 'Microphone permission is required for SpecFinder AI.' };
           }
         }
         console.log('[SpecFinder AI] Microphone permission: GRANTED');
-        return { granted: true };
+        return { granted: true, canAskAgain: true };
       }
 
       const check = await getRecordingPermissionsAsync();
       if (check.granted) {
         console.log('[SpecFinder AI] Microphone permission: GRANTED');
-        return { granted: true };
+        return { granted: true, canAskAgain: true };
       }
 
       const req = await requestRecordingPermissionsAsync();
       if (req.granted) {
         console.log('[SpecFinder AI] Microphone permission: GRANTED');
-        return { granted: true };
+        return { granted: true, canAskAgain: true };
       } else {
         console.log('[SpecFinder AI] Microphone permission: DENIED');
         return {
           granted: false,
-          error: 'Microphone permission DENIED.',
+          canAskAgain: req.canAskAgain,
+          error: 'Microphone permission is required for SpecFinder AI.',
         };
       }
     } catch (e: any) {
       console.warn('[SpecFinder AI] Mic permission check warning:', e?.message);
       console.log('[SpecFinder AI] Microphone permission: DENIED');
-      return { granted: false, error: 'Microphone permission check error: ' + e?.message };
+      return { granted: false, canAskAgain: true, error: 'Microphone permission is required for SpecFinder AI.' };
     }
   }
 

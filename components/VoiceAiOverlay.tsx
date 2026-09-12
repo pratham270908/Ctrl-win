@@ -8,6 +8,7 @@ import {
   Animated,
   Easing,
   Platform,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAudioRecorder, RecordingPresets, setAudioModeAsync } from 'expo-audio';
@@ -28,7 +29,8 @@ interface VoiceAiOverlayProps {
   onAutonomousNavigation: (place: Place, route: RouteOption) => void;
 }
 
-const GREETING_TEXT = 'Hello and welcome to SpecFinder, an autonomous AI integrated service. Where would you like to go?';
+const GREETING_TEXT =
+  'Hello and welcome to SpecFinder, an autonomous AI integrated service. Where would you like to go?';
 
 export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
   visible,
@@ -37,10 +39,11 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
 }) => {
   const [status, setStatus] = useState<VoiceAiStatus>('IDLE');
   const [conversation, setConversation] = useState<VoiceConversationExchange>({
-    aiUtterance: 'Connecting to SpecFinder AI...',
+    aiUtterance: 'Initializing SpecFinder AI...',
     userUtterance: '',
   });
   const [taskState, setTaskState] = useState<VoiceTaskState>(voiceAiService.getTaskState());
+  const [isPermanentlyDenied, setIsPermanentlyDenied] = useState<boolean>(false);
 
   const isListeningRef = useRef<boolean>(false);
   const recordingTimeoutRef = useRef<any>(null);
@@ -65,6 +68,7 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
       recordingTimeoutRef.current = null;
     }
 
+    console.log('[SpecFinder AI] User speech ended');
     console.log('[SpecFinder AI] Native microphone stopped');
     voiceAiService.setStatus('PROCESSING');
     voiceAiService.updateAiUtterance('Understanding your voice...');
@@ -72,7 +76,6 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
     try {
       await recorder.stop();
       const recordedUri = recorder.uri;
-      console.log('[SpecFinder AI] Native audio file recorded at:', recordedUri);
 
       if (!recordedUri) {
         voiceAiService.updateAiUtterance('Could not capture audio. Please tap the orb to try again.');
@@ -80,7 +83,7 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
         return;
       }
 
-      // Convert local audio file to Base64
+      // Convert local native audio file to Base64
       const base64Audio = await uriToBase64(recordedUri);
 
       // Transcribe via Gemini backend transcribe endpoint
@@ -93,11 +96,11 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
         return;
       }
 
-      // STEP 5: Actual spoken transcript appears under YOU
-      console.log(`[SpecFinder AI] Spoken command recognized: "${transcript}"`);
+      // Exact requested log format:
+      console.log('[SpecFinder AI] Transcript:', transcript);
       voiceAiService.updateUserUtterance(transcript);
 
-      // STEP 6, 7 & 8: Send to Gemini for destination understanding, confirmation, & autonomous navigation
+      // Send to Gemini for understanding & navigation execution
       await voiceAiService.processAutonomousCommand(transcript);
     } catch (err: any) {
       console.error('[SpecFinder AI] Utterance processing failed:', err);
@@ -106,26 +109,53 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
     }
   }, [recorder]);
 
-  // Start native microphone recording
-  const startNativeListening = useCallback(async () => {
+  // Begin physical microphone capture after greeting completes
+  const beginListening = useCallback(() => {
     if (isListeningRef.current || !isComponentActiveRef.current) return;
 
-    // STEP 1 & 3: Permission check with required diagnostic logging
-    console.log('[SpecFinder AI] Requesting microphone permission');
+    try {
+      recorder.record();
+      isListeningRef.current = true;
+      console.log('[SpecFinder AI] Native microphone started');
+
+      // ONLY set LISTENING when physical native microphone is confirmed started!
+      voiceAiService.setStatus('LISTENING');
+      voiceAiService.updateAiUtterance('Where would you like to go?');
+      console.log('[SpecFinder AI] Audio input received');
+
+      // Single utterance window: 4.2 seconds
+      if (recordingTimeoutRef.current) clearTimeout(recordingTimeoutRef.current);
+      recordingTimeoutRef.current = setTimeout(() => {
+        if (isListeningRef.current) {
+          finishUtterance();
+        }
+      }, 4200);
+    } catch (err: any) {
+      console.error('[SpecFinder AI] Failed to start native recording:', err);
+      voiceAiService.setStatus('ERROR');
+      voiceAiService.updateAiUtterance('Microphone failed to record: ' + (err?.message || err));
+    }
+  }, [recorder, finishUtterance]);
+
+  // Step 1: Check & Request Permission BEFORE voice automation starts
+  const initSessionWithPermissionCheck = useCallback(async () => {
+    voiceAiService.setStatus('CONNECTING');
+    voiceAiService.updateAiUtterance('Checking microphone permission...');
+
+    // 1 & 2: Check & request Android microphone permission
     const perm = await voiceAiService.ensureMicrophonePermission();
 
     if (!perm.granted) {
-      console.log('[SpecFinder AI] Microphone permission: DENIED');
       voiceAiService.setStatus('ERROR');
-      voiceAiService.updateAiUtterance(
-        perm.error || 'Microphone permission DENIED. Please enable microphone permission in device settings.'
-      );
-      return; // Do NOT display LISTENING!
+      voiceAiService.updateAiUtterance('Microphone permission is required for SpecFinder AI.');
+      setIsPermanentlyDenied(!perm.canAskAgain);
+      return; // STOP! Do NOT show LISTENING. Do NOT start microphone.
     }
 
-    console.log('[SpecFinder AI] Microphone permission: GRANTED');
-    console.log('[SpecFinder AI] Starting native microphone');
+    setIsPermanentlyDenied(false);
 
+    // 3: Initialize native microphone/audio & verify it started successfully
+    console.log('[SpecFinder AI] Starting native microphone');
     try {
       await setAudioModeAsync({
         allowsRecording: true,
@@ -133,32 +163,15 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
       });
 
       await recorder.prepareToRecordAsync();
-      recorder.record();
-      isListeningRef.current = true;
-
-      console.log('[SpecFinder AI] Native microphone started');
-
-      // Now and only now update UI to LISTENING
-      voiceAiService.setStatus('LISTENING');
-      voiceAiService.updateAiUtterance('Where would you like to go?');
-      console.log('[SpecFinder AI] Audio input received');
-
-      // STEP 4: Single Utterance Window (Automatic End-of-Speech Detection)
-      if (recordingTimeoutRef.current) clearTimeout(recordingTimeoutRef.current);
-      recordingTimeoutRef.current = setTimeout(() => {
-        if (isListeningRef.current) {
-          finishUtterance();
-        }
-      }, 4200); // 4.2 seconds single utterance window
     } catch (err: any) {
-      console.error('[SpecFinder AI] Failed to start native microphone:', err);
+      console.error('[SpecFinder AI] Failed to initialize native microphone:', err);
       voiceAiService.setStatus('ERROR');
-      voiceAiService.updateAiUtterance('Could not start native microphone: ' + (err?.message || err));
+      voiceAiService.updateAiUtterance('Failed to initialize microphone: ' + (err?.message || err));
+      return;
     }
-  }, [recorder, finishUtterance]);
 
-  // Speak AI initial greeting, then automatically start native microphone
-  const startGreeting = useCallback(() => {
+    // 4: AI speaks the required greeting and asks for the user's destination
+    if (!isComponentActiveRef.current) return;
     voiceAiService.setStatus('GREETING');
     voiceAiService.updateAiUtterance(GREETING_TEXT);
 
@@ -167,23 +180,23 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
         language: 'en-US',
         onDone: () => {
           if (isComponentActiveRef.current) {
-            startNativeListening();
+            beginListening();
           }
         },
         onError: () => {
           if (isComponentActiveRef.current) {
-            startNativeListening();
+            beginListening();
           }
         },
       });
     } catch (e) {
       setTimeout(() => {
         if (isComponentActiveRef.current) {
-          startNativeListening();
+          beginListening();
         }
       }, 2500);
     }
-  }, [startNativeListening]);
+  }, [recorder, beginListening]);
 
   // Lifecycle when overlay becomes visible
   useEffect(() => {
@@ -214,9 +227,9 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
       setTaskState(st);
     });
 
-    // Start voice session
+    // Start voice session and perform permission check FIRST
     voiceAiService.startSession(onAutonomousNavigation);
-    startGreeting();
+    initSessionWithPermissionCheck();
 
     return () => {
       isComponentActiveRef.current = false;
@@ -233,7 +246,7 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
       voiceAiService.stopSpeaking();
       voiceAiService.stopListening();
     };
-  }, [visible, startGreeting, recorder, onAutonomousNavigation]);
+  }, [visible, initSessionWithPermissionCheck, recorder, onAutonomousNavigation]);
 
   // Pulse & orb animations based on actual Voice State
   useEffect(() => {
@@ -312,7 +325,7 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
   const handleOrbPress = () => {
     if (status === 'GREETING') {
       Speech.stop();
-      startNativeListening();
+      beginListening();
     } else if (status === 'LISTENING') {
       // User finished command early
       finishUtterance();
@@ -321,14 +334,14 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
       voiceAiService.handleAiSpeechEnded();
     } else if (status === 'IDLE' || status === 'ERROR') {
       voiceAiService.startSession(onAutonomousNavigation);
-      startGreeting();
+      initSessionWithPermissionCheck();
     }
   };
 
   const getStatusBadge = () => {
     switch (status) {
       case 'CONNECTING':
-        return { label: 'CONNECTING...', color: '#F59E0B', bg: 'rgba(245, 158, 11, 0.18)' };
+        return { label: 'CHECKING PERMISSIONS...', color: '#F59E0B', bg: 'rgba(245, 158, 11, 0.18)' };
       case 'GREETING':
         return { label: 'GREETING...', color: '#06B6D4', bg: 'rgba(6, 182, 212, 0.18)' };
       case 'LISTENING':
@@ -340,7 +353,7 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
       case 'NAVIGATING':
         return { label: 'STARTING NAVIGATION...', color: '#10B981', bg: 'rgba(16, 185, 129, 0.3)' };
       case 'ERROR':
-        return { label: 'ERROR', color: '#EF4444', bg: 'rgba(239, 68, 68, 0.18)' };
+        return { label: 'PERMISSION / ERROR', color: '#EF4444', bg: 'rgba(239, 68, 68, 0.18)' };
       default:
         return { label: 'IDLE', color: '#94A3B8', bg: 'rgba(148, 163, 184, 0.18)' };
     }
@@ -467,6 +480,35 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
             </View>
           </View>
 
+          {/* Action Buttons for Permission Denied States */}
+          {status === 'ERROR' && (
+            <View style={styles.errorActionRow}>
+              {isPermanentlyDenied ? (
+                <TouchableOpacity
+                  style={styles.actionBtn}
+                  onPress={async () => {
+                    try {
+                      await Linking.openSettings();
+                    } catch (e) {}
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="settings-outline" size={16} color="#FFFFFF" />
+                  <Text style={styles.actionBtnText}>Open Microphone Settings</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={styles.actionBtn}
+                  onPress={() => initSessionWithPermissionCheck()}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="refresh" size={16} color="#FFFFFF" />
+                  <Text style={styles.actionBtnText}>Grant Permission</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
           {/* Destination Target Card (If Resolved) */}
           {taskState.destination && (
             <View style={styles.destinationCard}>
@@ -502,6 +544,8 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
               ? 'Confirming route...'
               : status === 'NAVIGATING'
               ? 'Launching navigation...'
+              : status === 'ERROR'
+              ? 'Tap button above or tap orb to retry'
               : 'SpecFinder Autonomous Voice Assistant'}
           </Text>
         </View>
@@ -720,6 +764,27 @@ const styles = StyleSheet.create({
     fontSize: 14.5,
     lineHeight: 21,
     fontWeight: '500',
+  },
+  errorActionRow: {
+    width: '100%',
+    alignItems: 'center',
+    marginVertical: 6,
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#0284C7',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#38BDF8',
+  },
+  actionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
   destinationCard: {
     width: '100%',
