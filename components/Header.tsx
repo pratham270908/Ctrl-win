@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
@@ -13,7 +13,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   greeting,
-  subtitle = 'Cyber Towers Corridor  Hyderabad',
+  subtitle = 'Cyber Towers Corridor • Hyderabad',
   onProfilePress,
   onNotificationPress,
 }) => {
@@ -24,9 +24,9 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <View style={styles.container}>
       <View style={styles.left}>
-        <Text style={styles.greeting}>{finalGreeting}</Text>
+        <Text style={styles.greeting} numberOfLines={1}>{finalGreeting}</Text>
         <View style={styles.locationRow}>
-          <Ionicons name="location-sharp" size={12} color={COLORS.accentCyan} />
+          <Ionicons name="location-sharp" size={13} color={COLORS.accentCyan} />
           <Text style={styles.subtitle} numberOfLines={1}>
             {subtitle}
           </Text>
@@ -37,24 +37,24 @@ export const Header: React.FC<HeaderProps> = ({
         <TouchableOpacity
           style={styles.iconButton}
           onPress={onNotificationPress}
-          activeOpacity={0.7}
+          activeOpacity={0.75}
           accessibilityLabel="Notifications"
         >
-          <Ionicons name="notifications-outline" size={20} color={COLORS.textPrimary} />
+          <Ionicons name="notifications" size={21} color="#E2E8F0" />
           <View style={styles.badgeDot} />
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.avatarButton}
           onPress={onProfilePress}
-          activeOpacity={0.7}
+          activeOpacity={0.75}
           accessibilityLabel="Profile"
         >
           {user?.avatar ? (
             <Image source={{ uri: user.avatar }} style={styles.avatar} />
           ) : (
             <View style={styles.avatarPlaceholder}>
-              <Ionicons name="person" size={17} color={COLORS.accent} />
+              <Ionicons name="person" size={20} color={COLORS.accentCyan} />
             </View>
           )}
         </TouchableOpacity>
@@ -70,7 +70,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
     paddingTop: 12,
-    paddingBottom: 8,
+    paddingBottom: 10,
     backgroundColor: COLORS.background,
   },
   left: {
@@ -78,58 +78,64 @@ const styles = StyleSheet.create({
     marginRight: SPACING.md,
   },
   greeting: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '800',
-    color: COLORS.textPrimary,
-    letterSpacing: -0.3,
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+    lineHeight: 28,
   },
   locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 3,
+    marginTop: 4,
     gap: 4,
   },
   subtitle: {
-    fontSize: 11.5,
-    color: COLORS.textSecondary,
-    fontWeight: '500',
+    fontSize: 12.5,
+    color: '#94A3B8',
+    fontWeight: '600',
+    letterSpacing: -0.1,
   },
   rightActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
   iconButton: {
-    width: 38,
-    height: 38,
+    width: 42,
+    height: 42,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surfaceHigh,
+    backgroundColor: 'rgba(26, 37, 64, 0.75)',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    borderWidth: 1.5,
+    borderColor: 'rgba(99, 132, 255, 0.22)',
     ...SHADOWS.sm,
     position: 'relative',
   },
   badgeDot: {
     position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
+    top: 9,
+    right: 9,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: COLORS.danger,
     borderWidth: 1.5,
     borderColor: COLORS.background,
   },
   avatarButton: {
-    width: 38,
-    height: 38,
+    width: 44,
+    height: 44,
     borderRadius: RADIUS.full,
     overflow: 'hidden',
-    borderWidth: 1.5,
-    borderColor: COLORS.accent,
-    ...SHADOWS.sm,
+    borderWidth: 2,
+    borderColor: COLORS.accentCyan,
+    shadowColor: COLORS.accentCyan,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 4,
   },
   avatar: {
     width: '100%',

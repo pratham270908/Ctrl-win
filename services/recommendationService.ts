@@ -1,6 +1,7 @@
 import { Place, RouteOption, Coordinates, DirectionClassification } from '../types';
 import { placesService, RecommendedFilter } from './placesService';
 import { calculateDistanceMeters, classifyDirection } from '../utils/directionUtils';
+import { getApiBaseUrl } from '../constants/config';
 
 /**
  * Interface defining the Recommendation Service contract.
@@ -111,7 +112,7 @@ class RecommendationService implements IRecommendationService {
     currentLat = 17.4375,
     currentLon = 78.3852,
     currentBearing = 45,
-    backendUrl = 'http://localhost:3000',
+    backendUrl = getApiBaseUrl(),
   }: {
     userQuery: string;
     currentLat?: number;

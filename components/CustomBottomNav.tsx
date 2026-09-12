@@ -80,8 +80,8 @@ export const CustomBottomNav: React.FC<CustomBottomNavProps> = ({
             <View style={[styles.iconWrapper, isActive && styles.iconWrapperActive]}>
               <Ionicons
                 name={(isActive ? tab.activeIcon : tab.inactiveIcon) as any}
-                size={22}
-                color={isActive ? COLORS.navActive : COLORS.navInactive}
+                size={25}
+                color={isActive ? COLORS.accentCyan : '#64748B'}
               />
               {showBadge && (
                 <View style={styles.badge}>
@@ -111,44 +111,55 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    backgroundColor: COLORS.navBg,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.navBorder,
-    ...SHADOWS.md,
+    backgroundColor: 'rgba(10, 15, 30, 0.98)',
+    paddingTop: 8,
+    borderTopWidth: 1.5,
+    borderTopColor: 'rgba(99, 132, 255, 0.18)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.6,
+    shadowRadius: 10,
+    elevation: 8,
   },
   tabButton: {
     alignItems: 'center',
     justifyContent: 'center',
     flex: 1,
-    minHeight: 50,
+    minHeight: 52,
     paddingVertical: 2,
   },
   iconWrapper: {
     position: 'relative',
-    height: 34,
-    paddingHorizontal: 18,
+    height: 38,
+    paddingHorizontal: 20,
     borderRadius: RADIUS.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
   iconWrapperActive: {
-    backgroundColor: COLORS.accentLight,
+    backgroundColor: 'rgba(6, 182, 212, 0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(6, 182, 212, 0.35)',
+    shadowColor: COLORS.accentCyan,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 3,
   },
   badge: {
     position: 'absolute',
     top: -2,
-    right: 8,
-    backgroundColor: COLORS.danger,
+    right: 10,
+    backgroundColor: '#EF4444',
     borderRadius: 8,
-    paddingHorizontal: 4,
+    paddingHorizontal: 5,
     paddingVertical: 1,
     minWidth: 16,
     height: 16,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
-    borderColor: COLORS.navBg,
+    borderColor: '#0A0F1E',
   },
   badgeText: {
     color: '#FFFFFF',
@@ -157,17 +168,17 @@ const styles = StyleSheet.create({
     lineHeight: 11,
   },
   tabLabel: {
-    fontSize: 10.5,
+    fontSize: 11,
     marginTop: 3,
     fontWeight: '600',
     letterSpacing: 0.2,
   },
   tabLabelActive: {
-    color: COLORS.navActive,
-    fontWeight: '700',
+    color: COLORS.accentCyan,
+    fontWeight: '800',
   },
   tabLabelInactive: {
-    color: COLORS.navInactive,
+    color: '#64748B',
   },
 });
 

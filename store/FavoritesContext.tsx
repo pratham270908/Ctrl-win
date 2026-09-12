@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Place } from '../types';
 import { APP_CONFIG } from '../constants/config';
 import { MOCK_PLACES } from '../data/mockPlaces';
+import { useAuth } from './AuthContext';
 
 interface FavoritesContextType {
   favorites: Place[];
@@ -15,34 +16,37 @@ interface FavoritesContextType {
 const FavoritesContext = createContext<FavoritesContextType | undefined>(undefined);
 
 export const FavoritesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
   const [favorites, setFavorites] = useState<Place[]>([]);
+
+  const getStorageKey = () => {
+    return user?.id ? `${APP_CONFIG.storageKeys.FAVORITES}_${user.id}` : APP_CONFIG.storageKeys.FAVORITES;
+  };
 
   useEffect(() => {
     loadFavorites();
-  }, []);
+  }, [user?.id]);
 
   const loadFavorites = async () => {
     try {
-      const stored = await AsyncStorage.getItem(APP_CONFIG.storageKeys.FAVORITES);
+      const key = getStorageKey();
+      const stored = await AsyncStorage.getItem(key);
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
           setFavorites(parsed.filter((p) => p && p.id));
-        } else {
-          setFavorites([MOCK_PLACES[0], MOCK_PLACES[6]]);
+          return;
         }
-      } else {
-        // Pre-populate with 2 realistic favorites for instant delight
+      }
+      // If guest or brand new user with no stored favorites
+      if (!user || user.isGuest) {
         const initial = [MOCK_PLACES[0], MOCK_PLACES[6]];
         setFavorites(initial);
-        await AsyncStorage.setItem(
-          APP_CONFIG.storageKeys.FAVORITES,
-          JSON.stringify(initial)
-        );
+      } else {
+        setFavorites([]);
       }
     } catch {
-      // Fallback
-      setFavorites([MOCK_PLACES[0]]);
+      setFavorites([]);
     }
   };
 
@@ -62,10 +66,7 @@ export const FavoritesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         updated = [place, ...current.filter((p) => p && p.id !== place.id)];
       }
       setFavorites(updated);
-      await AsyncStorage.setItem(
-        APP_CONFIG.storageKeys.FAVORITES,
-        JSON.stringify(updated)
-      );
+      await AsyncStorage.setItem(getStorageKey(), JSON.stringify(updated));
     } catch (e) {
       console.warn('Failed updating favorites in storage', e);
     }
@@ -77,10 +78,7 @@ export const FavoritesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const current = Array.isArray(favorites) ? favorites : [];
       const updated = current.filter((p) => p && p.id !== placeId);
       setFavorites(updated);
-      await AsyncStorage.setItem(
-        APP_CONFIG.storageKeys.FAVORITES,
-        JSON.stringify(updated)
-      );
+      await AsyncStorage.setItem(getStorageKey(), JSON.stringify(updated));
     } catch (e) {
       console.warn('Failed removing favorite from storage', e);
     }
@@ -89,7 +87,7 @@ export const FavoritesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const clearFavorites = async (): Promise<void> => {
     try {
       setFavorites([]);
-      await AsyncStorage.removeItem(APP_CONFIG.storageKeys.FAVORITES);
+      await AsyncStorage.removeItem(getStorageKey());
     } catch (e) {
       console.warn('Failed clearing favorites', e);
     }

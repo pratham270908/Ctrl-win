@@ -87,14 +87,21 @@ export interface OfflineArea {
 }
 
 export interface UserProfile {
-  id: string;
-  name: string;
+  id: string; // Authenticated unique user ID
+  name: string; // Display name
   email: string;
   avatar: string;
   isGuest: boolean;
+  travelMode?: 'DRIVE' | 'WALK' | 'BICYCLE' | 'TRANSIT';
+  distanceUnit?: 'km' | 'miles';
+  voiceGuidance?: boolean;
+  notifications?: boolean;
+  wheelchairAccessible?: boolean;
+  routePreference?: 'FASTEST' | 'SHORTEST' | 'USEFUL_STOPS';
   savedPlacesCount: number;
   reportsCount: number;
   recentSearches: string[];
+  updatedAt?: string;
 }
 
 export interface AppSettings {
@@ -106,6 +113,9 @@ export interface AppSettings {
   distanceUnit: 'km' | 'miles';
   theme: 'dark' | 'light' | 'system';
   voiceGuidance: boolean;
+  travelMode?: 'DRIVE' | 'WALK' | 'BICYCLE' | 'TRANSIT';
+  routePreference?: 'FASTEST' | 'SHORTEST' | 'USEFUL_STOPS';
 }
 
 export type SortCriteria = 'NEAREST' | 'HIGHEST_RATED' | 'SHORTEST_TIME' | 'BEST_OVERALL';
+

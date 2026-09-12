@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -33,7 +33,9 @@ const GlassCard: React.FC<{ children: React.ReactNode; style?: any }> = ({
 }) => <View style={[styles.glassCard, style]}>{children}</View>;
 
 // ─── Styled Text Input Row ─────────────────────────────────────────────────
+// ─── Styled Text Input Row ─────────────────────────────────────────────────
 interface FieldProps {
+  id?: string;
   icon: string;
   placeholder: string;
   value: string;
@@ -45,12 +47,14 @@ interface FieldProps {
   showToggle?: boolean;
   toggleVisible?: boolean;
   onToggle?: () => void;
-  focused: boolean;
-  onFocus: () => void;
-  onBlur: () => void;
+  isFocused?: boolean;
+  onFocus?: () => void;
+  onBlur?: () => void;
+  onSubmitEditing?: () => void;
+  returnKeyType?: any;
 }
 
-const Field: React.FC<FieldProps> = ({
+const Field: React.FC<FieldProps> = React.memo(({
   icon,
   placeholder,
   value,
@@ -62,50 +66,91 @@ const Field: React.FC<FieldProps> = ({
   showToggle,
   toggleVisible,
   onToggle,
-  focused,
+  isFocused = false,
   onFocus,
   onBlur,
-}) => (
-  <View
-    style={[
-      styles.fieldRow,
-      focused && styles.fieldRowFocused,
-    ]}
-  >
-    <Ionicons
-      name={icon as any}
-      size={18}
-      color={focused ? '#38BDF8' : '#94A3B8'}
-      style={styles.fieldIcon}
-    />
-    <TextInput
-      style={styles.fieldInput}
-      placeholder={placeholder}
-      placeholderTextColor="rgba(148,163,184,0.6)"
-      value={value}
-      onChangeText={onChangeText}
-      secureTextEntry={secureTextEntry}
-      keyboardType={keyboardType}
-      autoCapitalize={autoCapitalize}
-      autoCorrect={autoCorrect}
-      onFocus={onFocus}
-      onBlur={onBlur}
-    />
-    {showToggle && (
+  onSubmitEditing,
+  returnKeyType,
+}) => {
+  const inputRef = useRef<TextInput>(null);
+
+  const handleToggle = () => {
+    onToggle?.();
+  };
+
+  const handleIconPress = () => {
+    inputRef.current?.focus();
+  };
+
+  return (
+    <View
+      style={[
+        styles.fieldRow,
+        isFocused && styles.fieldRowFocused,
+      ]}
+    >
       <TouchableOpacity
-        onPress={onToggle}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        style={styles.eyeBtn}
+        onPress={handleIconPress}
+        activeOpacity={1}
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 6 }}
+        style={styles.fieldIconTouch}
+        {...(Platform.OS === 'web' ? { onMouseDown: (e: any) => e.preventDefault() } : {})}
       >
         <Ionicons
-          name={toggleVisible ? 'eye-off-outline' : 'eye-outline'}
+          name={icon as any}
           size={18}
-          color="#94A3B8"
+          color={isFocused ? '#38BDF8' : '#94A3B8'}
+          style={styles.fieldIcon}
         />
       </TouchableOpacity>
-    )}
-  </View>
-);
+
+      <TextInput
+        ref={inputRef}
+        style={[
+          styles.fieldInput,
+          Platform.OS === 'web'
+            ? ({
+                outline: 'none',
+                outlineWidth: 0,
+                outlineStyle: 'none',
+                boxShadow: 'none',
+              } as any)
+            : null,
+        ]}
+        placeholder={placeholder}
+        placeholderTextColor="rgba(148,163,184,0.6)"
+        value={value}
+        onChangeText={onChangeText}
+        secureTextEntry={secureTextEntry}
+        keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize}
+        autoCorrect={autoCorrect}
+        onFocus={onFocus}
+        onBlur={onBlur}
+        onSubmitEditing={onSubmitEditing}
+        returnKeyType={returnKeyType}
+        underlineColorAndroid="transparent"
+        selectionColor="#38BDF8"
+      />
+
+      {showToggle && (
+        <TouchableOpacity
+          onPress={handleToggle}
+          hitSlop={{ top: 14, bottom: 14, left: 12, right: 14 }}
+          style={styles.eyeBtn}
+          activeOpacity={0.7}
+          {...(Platform.OS === 'web' ? { onMouseDown: (e: any) => e.preventDefault() } : {})}
+        >
+          <Ionicons
+            name={toggleVisible ? 'eye-off-outline' : 'eye-outline'}
+            size={18}
+            color="#94A3B8"
+          />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+});
 
 // ─── Blue Gradient Action Button ───────────────────────────────────────────
 interface ActionBtnProps {
@@ -193,8 +238,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
 
   // Fields
   const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('explorer@specfinder.app');
-  const [password, setPassword] = useState('specfinder2026');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [resetEmail, setResetEmail] = useState('');
 
@@ -204,7 +249,30 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
   const [resetSuccess, setResetSuccess] = useState('');
-  const [focused, setFocused] = useState<string | null>(null);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
+  const blurTimeoutRef = useRef<any>(null);
+
+  const handleFocus = useCallback((fieldId: string) => {
+    if (blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
+      blurTimeoutRef.current = null;
+    }
+    setFocusedField(fieldId);
+  }, []);
+
+  const handleBlur = useCallback((fieldId: string) => {
+    blurTimeoutRef.current = setTimeout(() => {
+      setFocusedField((current) => (current === fieldId ? null : current));
+    }, 40);
+  }, []);
+
+  const toggleShowPass = useCallback(() => {
+    setShowPass((prev) => !prev);
+  }, []);
+
+  const toggleShowConfirm = useCallback(() => {
+    setShowConfirm((prev) => !prev);
+  }, []);
 
   // Entry animations
   const bgFade = useRef(new Animated.Value(0)).current;
@@ -224,6 +292,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
   }, [authMode]);
 
   const switchMode = (mode: AuthMode) => {
+    setFocusedField(null);
     // Briefly fade out card then switch
     Animated.parallel([
       Animated.timing(cardFade, { toValue: 0, duration: 180, useNativeDriver: true }),
@@ -296,12 +365,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
     try { await loginAsGuest(); onSuccess(); } catch { onSuccess(); }
   };
 
-  const f = (name: string) => ({
-    focused: focused === name,
-    onFocus: () => setFocused(name),
-    onBlur: () => setFocused(null),
-  });
-
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <View style={styles.root}>
@@ -370,14 +433,21 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
                   {error ? <ErrorBanner message={error} /> : null}
 
                   <Field
+                    key="login_email"
+                    id="login_email"
                     icon="mail-outline"
                     placeholder="Email address"
                     value={email}
                     onChangeText={setEmail}
                     keyboardType="email-address"
-                    {...f('email')}
+                    isFocused={focusedField === 'login_email'}
+                    onFocus={() => handleFocus('login_email')}
+                    onBlur={() => handleBlur('login_email')}
+                    returnKeyType="next"
                   />
                   <Field
+                    key="login_password"
+                    id="login_password"
                     icon="lock-closed-outline"
                     placeholder="Password"
                     value={password}
@@ -385,8 +455,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
                     secureTextEntry={!showPass}
                     showToggle
                     toggleVisible={showPass}
-                    onToggle={() => setShowPass(!showPass)}
-                    {...f('pass')}
+                    onToggle={toggleShowPass}
+                    isFocused={focusedField === 'login_password'}
+                    onFocus={() => handleFocus('login_password')}
+                    onBlur={() => handleBlur('login_password')}
+                    returnKeyType="done"
+                    onSubmitEditing={handleLogin}
                   />
 
                   {/* Remember Me + Forgot */}
@@ -431,22 +505,34 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
                   {error ? <ErrorBanner message={error} /> : null}
 
                   <Field
+                    key="signup_name"
+                    id="name"
                     icon="person-outline"
                     placeholder="Full name"
                     value={fullName}
                     onChangeText={setFullName}
                     autoCapitalize="words"
-                    {...f('name')}
+                    isFocused={focusedField === 'name'}
+                    onFocus={() => handleFocus('name')}
+                    onBlur={() => handleBlur('name')}
+                    returnKeyType="next"
                   />
                   <Field
+                    key="signup_email"
+                    id="email"
                     icon="mail-outline"
                     placeholder="Email address"
                     value={email}
                     onChangeText={setEmail}
                     keyboardType="email-address"
-                    {...f('email2')}
+                    isFocused={focusedField === 'email'}
+                    onFocus={() => handleFocus('email')}
+                    onBlur={() => handleBlur('email')}
+                    returnKeyType="next"
                   />
                   <Field
+                    key="signup_password"
+                    id="password"
                     icon="lock-closed-outline"
                     placeholder="Password"
                     value={password}
@@ -454,10 +540,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
                     secureTextEntry={!showPass}
                     showToggle
                     toggleVisible={showPass}
-                    onToggle={() => setShowPass(!showPass)}
-                    {...f('pass2')}
+                    onToggle={toggleShowPass}
+                    isFocused={focusedField === 'password'}
+                    onFocus={() => handleFocus('password')}
+                    onBlur={() => handleBlur('password')}
+                    returnKeyType="next"
                   />
                   <Field
+                    key="signup_confirm_password"
+                    id="confirmPassword"
                     icon="shield-checkmark-outline"
                     placeholder="Confirm password"
                     value={confirmPassword}
@@ -465,8 +556,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
                     secureTextEntry={!showConfirm}
                     showToggle
                     toggleVisible={showConfirm}
-                    onToggle={() => setShowConfirm(!showConfirm)}
-                    {...f('confirm')}
+                    onToggle={toggleShowConfirm}
+                    isFocused={focusedField === 'confirmPassword'}
+                    onFocus={() => handleFocus('confirmPassword')}
+                    onBlur={() => handleBlur('confirmPassword')}
+                    returnKeyType="done"
+                    onSubmitEditing={handleSignUp}
                   />
 
                   <Text style={styles.termsText}>
@@ -507,12 +602,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
                   {resetSuccess ? <SuccessBanner message={resetSuccess} /> : null}
 
                   <Field
+                    key="forgot_email"
+                    id="forgot_email"
                     icon="mail-outline"
                     placeholder="Your email address"
                     value={resetEmail || email}
                     onChangeText={setResetEmail}
                     keyboardType="email-address"
-                    {...f('reset')}
+                    isFocused={focusedField === 'forgot_email'}
+                    onFocus={() => handleFocus('forgot_email')}
+                    onBlur={() => handleBlur('forgot_email')}
+                    returnKeyType="done"
+                    onSubmitEditing={handleForgotPassword}
                   />
 
                   <ActionButton
@@ -695,28 +796,40 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(56, 189, 248, 0.18)',
-    paddingHorizontal: 14,
+    paddingLeft: 14,
+    paddingRight: 10,
     height: 50,
     marginBottom: 14,
   },
   fieldRowFocused: {
     borderColor: '#38BDF8',
     backgroundColor: 'rgba(15, 38, 72, 0.85)',
-    shadowColor: '#38BDF8',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.22,
-    shadowRadius: 8,
-    elevation: 3,
   },
-  fieldIcon: { marginRight: 10 },
+  fieldIconTouch: {
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingRight: 10,
+  },
+  fieldIcon: {},
   fieldInput: {
     flex: 1,
     color: '#FFFFFF',
     fontSize: 14.5,
     fontWeight: '500',
+    height: '100%',
     paddingVertical: 0,
+    textAlignVertical: 'center',
+    borderWidth: 0,
+    borderColor: 'transparent',
+    backgroundColor: 'transparent',
   },
-  eyeBtn: { padding: 4 },
+  eyeBtn: {
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingLeft: 6,
+  },
 
   // Options row
   optRow: {

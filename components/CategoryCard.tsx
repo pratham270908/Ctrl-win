@@ -50,11 +50,20 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
       <View
         style={[
           styles.iconContainer,
-          { backgroundColor: category.bgColor },
-          isSelected && { backgroundColor: category.color, borderColor: category.color },
+          {
+            backgroundColor: category.bgColor,
+            borderColor: `${category.color}40`,
+          },
+          isSelected && {
+            backgroundColor: category.color,
+            borderColor: category.color,
+            shadowColor: category.color,
+            shadowOpacity: 0.6,
+            shadowRadius: 10,
+          },
         ]}
       >
-        <MaterialCommunityIcons name={iconName} size={24} color={iconColor} />
+        <MaterialCommunityIcons name={iconName} size={28} color={iconColor} />
       </View>
       <Text
         style={[styles.name, isSelected && styles.nameSelected]}
@@ -70,31 +79,31 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     marginRight: 14,
-    width: 66,
+    width: 74,
   },
   containerSelected: {
     transform: [{ scale: 1.05 }],
   },
   iconContainer: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
+    width: 64,
+    height: 64,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    borderWidth: 1.5,
     ...SHADOWS.sm,
-    marginBottom: 6,
+    marginBottom: 7,
   },
   name: {
-    fontSize: 11.5,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#E2E8F0',
     textAlign: 'center',
-    letterSpacing: -0.1,
+    letterSpacing: -0.2,
   },
   nameSelected: {
-    color: COLORS.accent,
-    fontWeight: '700',
+    color: COLORS.accentCyan,
+    fontWeight: '800',
   },
 });
+

@@ -18,3 +18,7 @@ web-build/
 .env.local
 .env.*
 
+# Local scratch
+scratch/
+
+

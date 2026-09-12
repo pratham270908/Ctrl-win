@@ -1,4 +1,4 @@
-﻿import { PlaceCategory } from '../types';
+import { PlaceCategory } from '../types';
 
 export interface CategoryInfo {
   id: PlaceCategory;
@@ -16,8 +16,8 @@ export const CATEGORIES: CategoryInfo[] = [
     name: 'Coffee',
     iconName: 'coffee',
     emoji: '☕',
-    color: '#F97316',
-    bgColor: 'rgba(249, 115, 22, 0.15)',
+    color: '#F59E0B',
+    bgColor: 'rgba(245, 158, 11, 0.16)',
     description: 'Cafes, espresso bars and drive-thrus ahead',
   },
   {
@@ -26,7 +26,7 @@ export const CATEGORIES: CategoryInfo[] = [
     iconName: 'gas-station',
     emoji: '⛽',
     color: '#06B6D4',
-    bgColor: 'rgba(6, 182, 212, 0.15)',
+    bgColor: 'rgba(6, 182, 212, 0.16)',
     description: 'Fuel pumps, EV chargers and air stations',
   },
   {
@@ -34,8 +34,8 @@ export const CATEGORIES: CategoryInfo[] = [
     name: 'ATM',
     iconName: 'atm',
     emoji: '🏧',
-    color: '#22C55E',
-    bgColor: 'rgba(34, 197, 94, 0.15)',
+    color: '#10B981',
+    bgColor: 'rgba(16, 185, 129, 0.16)',
     description: 'Cash dispensers and bank kiosks',
   },
   {
@@ -43,8 +43,8 @@ export const CATEGORIES: CategoryInfo[] = [
     name: 'Pharmacy',
     iconName: 'pill',
     emoji: '💊',
-    color: '#EF4444',
-    bgColor: 'rgba(239, 68, 68, 0.15)',
+    color: '#F43F5E',
+    bgColor: 'rgba(244, 63, 94, 0.16)',
     description: '24/7 medical stores and chemist shops',
   },
   {
@@ -52,8 +52,8 @@ export const CATEGORIES: CategoryInfo[] = [
     name: 'Food',
     iconName: 'silverware-fork-knife',
     emoji: '🍽',
-    color: '#F97316',
-    bgColor: 'rgba(249, 115, 22, 0.15)',
+    color: '#FB923C',
+    bgColor: 'rgba(251, 146, 60, 0.16)',
     description: 'Quick bites, fine dining and takeaway',
   },
   {
@@ -62,7 +62,7 @@ export const CATEGORIES: CategoryInfo[] = [
     iconName: 'hospital-building',
     emoji: '🏥',
     color: '#EF4444',
-    bgColor: 'rgba(239, 68, 68, 0.15)',
+    bgColor: 'rgba(239, 68, 68, 0.16)',
     description: 'Emergency trauma, clinics and care centers',
   },
   {
@@ -70,8 +70,8 @@ export const CATEGORIES: CategoryInfo[] = [
     name: 'Shopping',
     iconName: 'cart',
     emoji: '🛍',
-    color: '#A78BFA',
-    bgColor: 'rgba(167, 139, 250, 0.15)',
+    color: '#A855F7',
+    bgColor: 'rgba(168, 85, 247, 0.16)',
     description: 'Supermarkets, malls and convenience',
   },
 ];

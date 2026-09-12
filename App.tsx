@@ -179,6 +179,18 @@ const MainNavigator: React.FC = () => {
               onTransportPress={() => setCurrentScreen('TRANSPORT')}
               onMapPress={() => navigateToTabs('map')}
               onResumeNavigation={() => setCurrentScreen('NAVIGATION')}
+              onAutonomousNavigation={(place, route) => {
+                setSelectedPlace(place);
+                setActiveDestinationPlace(place);
+                setActiveRoute(route);
+                addRecentRoute({
+                  destinationName: place.name,
+                  routeTitle: route.title,
+                  distanceKm: route.distanceKm,
+                  estimatedMinutes: route.estimatedMinutes,
+                });
+                setCurrentScreen('NAVIGATION');
+              }}
             />
           )}
 

@@ -15,11 +15,12 @@ import { CategoryCard } from '../components/CategoryCard';
 import { DirectionIndicator } from '../components/DirectionIndicator';
 import { InteractiveMap } from '../components/InteractiveMap';
 import { PlaceCard } from '../components/PlaceCard';
+import { VoiceAiOverlay } from '../components/VoiceAiOverlay';
 import { CATEGORIES, CategoryInfo } from '../data/mockCategories';
 import { placesService } from '../services/placesService';
 import { locationService } from '../services/locationService';
 import { useApp } from '../store/AppContext';
-import { Place, PlaceCategory, Coordinates } from '../types';
+import { Place, PlaceCategory, Coordinates, RouteOption } from '../types';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
 import { APP_CONFIG } from '../constants/config';
 
@@ -35,6 +36,7 @@ interface HomeScreenProps {
   onTransportPress: () => void;
   onMapPress?: () => void;
   onResumeNavigation?: () => void;
+  onAutonomousNavigation?: (place: Place, route: RouteOption) => void;
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
@@ -49,8 +51,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onTransportPress,
   onMapPress,
   onResumeNavigation,
+  onAutonomousNavigation,
 }) => {
   const { activeRoute, activeDestinationPlace, clearActiveRoute } = useApp();
+  const [isVoiceOverlayVisible, setIsVoiceOverlayVisible] = useState<boolean>(false);
   const [routeRecommendations, setRouteRecommendations] = useState<Place[]>([]);
   const [headingAngle, setHeadingAngle] = useState<number>(45);
   const [headingText, setHeadingText] = useState<string>('Travelling North-East');
@@ -247,8 +251,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
         {/* Quick Categories Bar */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Categories Along Route</Text>
-          <TouchableOpacity onPress={onSearchPress}>
+          <View>
+            <Text style={styles.sectionTitle}>Categories Along Route</Text>
+            <Text style={styles.sectionSubtitle}>Tap to discover places on your travel corridor</Text>
+          </View>
+          <TouchableOpacity onPress={onSearchPress} activeOpacity={0.7}>
             <Text style={styles.sectionLink}>View All</Text>
           </TouchableOpacity>
         </View>
@@ -277,7 +284,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           onSimulateChange={handleSimulateHeading}
         />
 
-        {/* Map Preview Section */}
+        {/* Map Preview Section - CONTAINER ONLY REDESIGNED, MAP COMPONENT IS UNTOUCHED */}
         <View style={styles.mapSectionCard}>
           <View style={styles.mapHeaderRow}>
             <View style={styles.mapHeaderLeft}>
@@ -303,7 +310,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               }}
               activeOpacity={0.75}
             >
-              <Ionicons name="expand" size={16} color={COLORS.accent} />
+              <Ionicons name="expand" size={14} color={COLORS.accentCyan} />
               <Text style={styles.expandMapText}>Full Map</Text>
             </TouchableOpacity>
           </View>
@@ -325,51 +332,51 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         {/* Quick Utility Shortcuts */}
         <View style={styles.shortcutsRow}>
           <TouchableOpacity
-            style={[styles.shortcutItem, { backgroundColor: COLORS.dangerLight, borderColor: 'rgba(239,68,68,0.3)' }]}
+            style={[styles.shortcutItem, { backgroundColor: 'rgba(239, 68, 68, 0.12)', borderColor: 'rgba(239, 68, 68, 0.35)' }]}
             onPress={onEmergencyPress}
             activeOpacity={0.8}
           >
             <View style={[styles.shortcutIconCircle, { backgroundColor: COLORS.danger }]}>
               <Ionicons name="alert" size={18} color="#FFFFFF" />
             </View>
-            <Text style={[styles.shortcutTitle, { color: COLORS.danger }]}>Emergency</Text>
-            <Text style={styles.shortcutSub}>Hospitals &amp; Police</Text>
+            <Text style={[styles.shortcutTitle, { color: '#F87171' }]}>Emergency</Text>
+            <Text style={styles.shortcutSub}>Hospitals & Police</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.shortcutItem, { backgroundColor: COLORS.accentLight, borderColor: COLORS.border }]}
+            style={[styles.shortcutItem, { backgroundColor: 'rgba(59, 130, 246, 0.12)', borderColor: 'rgba(59, 130, 246, 0.35)' }]}
             onPress={onTransportPress}
             activeOpacity={0.8}
           >
-            <View style={[styles.shortcutIconCircle, { backgroundColor: COLORS.info }]}>
+            <View style={[styles.shortcutIconCircle, { backgroundColor: '#3B82F6' }]}>
               <Ionicons name="bus" size={18} color="#FFFFFF" />
             </View>
-            <Text style={[styles.shortcutTitle, { color: COLORS.info }]}>Transit</Text>
-            <Text style={styles.shortcutSub}>Metro &amp; Bus 216</Text>
+            <Text style={[styles.shortcutTitle, { color: '#60A5FA' }]}>Transit</Text>
+            <Text style={styles.shortcutSub}>Metro & Bus 216</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.shortcutItem, { backgroundColor: COLORS.accentLight, borderColor: COLORS.border }]}
+            style={[styles.shortcutItem, { backgroundColor: 'rgba(168, 85, 247, 0.12)', borderColor: 'rgba(168, 85, 247, 0.35)' }]}
             onPress={onAccessibilityPress}
             activeOpacity={0.8}
           >
-            <View style={[styles.shortcutIconCircle, { backgroundColor: COLORS.accent }]}>
+            <View style={[styles.shortcutIconCircle, { backgroundColor: '#A855F7' }]}>
               <Ionicons name="accessibility" size={18} color="#FFFFFF" />
             </View>
-            <Text style={[styles.shortcutTitle, { color: COLORS.accent }]}>Accessible</Text>
-            <Text style={styles.shortcutSub}>No-Stair Routes</Text>
+            <Text style={[styles.shortcutTitle, { color: '#C084FC' }]}>Accessible</Text>
+            <Text style={styles.shortcutSub}>No-Stair Paths</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.shortcutItem, { backgroundColor: COLORS.aheadLight, borderColor: 'rgba(34,197,94,0.3)' }]}
+            style={[styles.shortcutItem, { backgroundColor: 'rgba(16, 185, 129, 0.12)', borderColor: 'rgba(16, 185, 129, 0.35)' }]}
             onPress={onOfflineMapsPress}
             activeOpacity={0.8}
           >
-            <View style={[styles.shortcutIconCircle, { backgroundColor: COLORS.ahead }]}>
+            <View style={[styles.shortcutIconCircle, { backgroundColor: '#10B981' }]}>
               <Ionicons name="cloud-offline" size={18} color="#FFFFFF" />
             </View>
-            <Text style={[styles.shortcutTitle, { color: COLORS.ahead }]}>Offline</Text>
-            <Text style={styles.shortcutSub}>Hyd Downloaded</Text>
+            <Text style={[styles.shortcutTitle, { color: '#34D399' }]}>Offline</Text>
+            <Text style={styles.shortcutSub}>Hyd Cached</Text>
           </TouchableOpacity>
         </View>
 
@@ -482,6 +489,33 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* SpecFinder Autonomous Voice AI Floating Trigger Button */}
+      <TouchableOpacity
+        style={styles.floatingAiButton}
+        onPress={() => setIsVoiceOverlayVisible(true)}
+        activeOpacity={0.85}
+        accessibilityRole="button"
+        accessibilityLabel="SpecFinder AI Voice Assistant"
+      >
+        <View style={styles.aiGlowRing} />
+        <View style={styles.aiButtonInner}>
+          <Ionicons name="sparkles" size={24} color="#FFFFFF" />
+          <View style={styles.aiBadgeDot} />
+        </View>
+      </TouchableOpacity>
+
+      {/* SpecFinder Autonomous Voice AI Overlay */}
+      <VoiceAiOverlay
+        visible={isVoiceOverlayVisible}
+        onClose={() => setIsVoiceOverlayVisible(false)}
+        onAutonomousNavigation={(place, route) => {
+          setIsVoiceOverlayVisible(false);
+          if (onAutonomousNavigation) {
+            onAutonomousNavigation(place, route);
+          }
+        }}
+      />
     </SafeAreaView>
   );
 };
@@ -503,43 +537,49 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
-    marginTop: SPACING.md,
-    marginBottom: SPACING.sm,
+    marginTop: 20,
+    marginBottom: 8,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
   },
   sectionSubtitle: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
+    fontSize: 12,
+    color: '#94A3B8',
     marginTop: 2,
+    fontWeight: '500',
   },
   sectionLink: {
     fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.accent,
+    fontWeight: '700',
+    color: COLORS.accentCyan,
   },
   categoriesRow: {
     paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.xs,
+    paddingVertical: 6,
   },
   mapSectionCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: 'rgba(17, 24, 39, 0.95)',
     marginHorizontal: SPACING.lg,
-    marginVertical: SPACING.sm,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOWS.md,
+    marginVertical: 10,
+    borderRadius: 22,
+    padding: 16,
+    borderWidth: 1.5,
+    borderColor: 'rgba(99, 132, 255, 0.22)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.5,
+    shadowRadius: 14,
+    elevation: 6,
   },
   mapHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: SPACING.sm,
+    marginBottom: 10,
   },
   mapHeaderLeft: {
     flex: 1,
@@ -547,95 +587,109 @@ const styles = StyleSheet.create({
   radarPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginBottom: 2,
+    gap: 5,
+    marginBottom: 3,
+    backgroundColor: 'rgba(16, 185, 129, 0.16)',
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 10,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.35)',
   },
   radarDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.ahead,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#10B981',
+    shadowColor: '#10B981',
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
   },
   radarText: {
-    fontSize: 10,
+    fontSize: 10.5,
     fontWeight: '800',
-    color: COLORS.ahead,
-    letterSpacing: 0.5,
+    color: '#10B981',
+    letterSpacing: 0.6,
   },
   mapTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
   },
   expandMapButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: COLORS.accentLight,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: RADIUS.sm,
+    gap: 5,
+    backgroundColor: 'rgba(6, 182, 212, 0.15)',
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(6, 182, 212, 0.35)',
   },
   expandMapText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.accent,
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.accentCyan,
   },
   mapWrapper: {
-    borderRadius: RADIUS.lg,
+    borderRadius: 16,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    borderWidth: 1.5,
+    borderColor: 'rgba(99, 132, 255, 0.25)',
   },
   shortcutsRow: {
     flexDirection: 'row',
     paddingHorizontal: SPACING.lg,
-    marginVertical: SPACING.sm,
-    gap: SPACING.xs,
+    marginVertical: 10,
+    gap: 8,
   },
   shortcutItem: {
     flex: 1,
-    padding: SPACING.sm,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
+    padding: 10,
+    borderRadius: 18,
+    borderWidth: 1.5,
     alignItems: 'center',
   },
   shortcutIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
+    marginBottom: 6,
     ...SHADOWS.sm,
   },
   shortcutTitle: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: '800',
   },
   shortcutSub: {
-    fontSize: 9,
-    color: COLORS.textSecondary,
+    fontSize: 9.5,
+    fontWeight: '600',
+    color: '#94A3B8',
     textAlign: 'center',
     marginTop: 1,
   },
   feedbackBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.accentLight,
+    backgroundColor: 'rgba(6, 182, 212, 0.14)',
     paddingHorizontal: SPACING.md,
-    paddingVertical: 8,
+    paddingVertical: 9,
     borderRadius: RADIUS.md,
     marginHorizontal: SPACING.lg,
     marginBottom: SPACING.sm,
     borderWidth: 1,
-    borderColor: COLORS.borderBright,
+    borderColor: 'rgba(6, 182, 212, 0.35)',
     gap: 8,
   },
   feedbackBannerText: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: '700',
-    color: COLORS.accent,
+    color: COLORS.accentCyan,
   },
   filterPillsRow: {
     paddingHorizontal: SPACING.lg,
@@ -646,39 +700,42 @@ const styles = StyleSheet.create({
   filterPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    height: 34,
-    paddingHorizontal: 12,
+    gap: 6,
+    height: 36,
+    paddingHorizontal: 14,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surfaceHigh,
+    backgroundColor: 'rgba(26, 37, 64, 0.85)',
     borderWidth: 1.5,
-    borderColor: COLORS.border,
+    borderColor: 'rgba(99, 132, 255, 0.25)',
     ...SHADOWS.sm,
   },
   filterPillActive: {
-    backgroundColor: COLORS.accent,
-    borderColor: COLORS.accent,
+    backgroundColor: COLORS.accentCyan,
+    borderColor: COLORS.accentCyan,
+    shadowColor: COLORS.accentCyan,
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
   },
   filterPillText: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: '600',
-    color: COLORS.textPrimary,
+    color: '#94A3B8',
   },
   filterPillTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '700',
+    color: '#0A0F1E',
+    fontWeight: '800',
   },
   emptyFilteredBox: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: SPACING.xl,
     paddingHorizontal: SPACING.lg,
-    backgroundColor: COLORS.surfaceHigh,
+    backgroundColor: 'rgba(26, 37, 64, 0.75)',
     borderRadius: RADIUS.lg,
     marginHorizontal: SPACING.lg,
     marginVertical: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: 'rgba(99, 132, 255, 0.2)',
   },
   emptyFilteredTitle: {
     fontSize: 13,
@@ -689,26 +746,26 @@ const styles = StyleSheet.create({
   },
   resetFilterBtn: {
     marginTop: 12,
-    backgroundColor: COLORS.accent,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    backgroundColor: COLORS.accentCyan,
+    paddingHorizontal: 18,
+    paddingVertical: 9,
     borderRadius: RADIUS.full,
   },
   resetFilterText: {
     fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    fontWeight: '800',
+    color: '#0A0F1E',
   },
   /* Active Journey Banner */
   activeJourneyCard: {
-    backgroundColor: COLORS.surfaceHigh,
+    backgroundColor: 'rgba(17, 24, 39, 0.95)',
     marginHorizontal: SPACING.lg,
     marginTop: SPACING.xs,
     marginBottom: SPACING.sm,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.borderBright,
+    borderRadius: 20,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(34, 197, 94, 0.35)',
     ...SHADOWS.md,
   },
   activeJourneyHeaderRow: {
@@ -722,55 +779,58 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     backgroundColor: 'rgba(34, 197, 94, 0.16)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
     borderRadius: RADIUS.full,
     borderWidth: 1,
-    borderColor: 'rgba(34, 197, 94, 0.3)',
+    borderColor: 'rgba(34, 197, 94, 0.35)',
   },
   activePulseDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
     backgroundColor: COLORS.ahead,
+    shadowColor: COLORS.ahead,
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
   },
   activePillText: {
-    fontSize: 10,
+    fontSize: 10.5,
     fontWeight: '800',
     color: COLORS.ahead,
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
   cancelRouteBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
     borderRadius: RADIUS.full,
-    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    backgroundColor: 'rgba(239, 68, 68, 0.14)',
   },
   cancelRouteText: {
     fontSize: 11,
     fontWeight: '700',
-    color: COLORS.danger,
+    color: '#F87171',
   },
   activeJourneyBodyRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: SPACING.sm,
-    marginTop: 2,
+    marginTop: 4,
   },
   activeDestCol: {
     flex: 1,
   },
   activeDestTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '800',
     color: '#FFFFFF',
   },
   activeRouteStats: {
-    fontSize: 11,
+    fontSize: 11.5,
     fontWeight: '600',
     color: '#94A3B8',
     marginTop: 2,
@@ -779,16 +839,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: COLORS.accent,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    backgroundColor: COLORS.accentCyan,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: RADIUS.lg,
     ...SHADOWS.sm,
   },
   resumeNavBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#0A0F1E',
   },
   routePillTag: {
     flexDirection: 'row',
@@ -797,64 +857,114 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   routePillTagText: {
-    fontSize: 10,
+    fontSize: 10.5,
     fontWeight: '800',
     color: COLORS.ahead,
     letterSpacing: 0.5,
   },
   /* No Route Guidance Card */
   noRoutePromptCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: 'rgba(17, 24, 39, 0.95)',
     marginHorizontal: SPACING.lg,
-    marginTop: SPACING.md,
+    marginTop: 16,
     marginBottom: SPACING.sm,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    borderRadius: 22,
+    padding: 18,
+    borderWidth: 1.5,
+    borderColor: 'rgba(99, 132, 255, 0.22)',
     alignItems: 'center',
-    ...SHADOWS.sm,
+    ...SHADOWS.md,
   },
   noRouteIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.accentLight,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(6, 182, 212, 0.16)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(6, 182, 212, 0.4)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   noRouteTextCol: {
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 14,
   },
   noRoutePromptTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
     textAlign: 'center',
   },
   noRoutePromptSub: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
+    fontSize: 12.5,
+    color: '#94A3B8',
     textAlign: 'center',
     marginTop: 4,
-    lineHeight: 16,
+    lineHeight: 18,
     paddingHorizontal: SPACING.sm,
   },
   noRouteActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: COLORS.accent,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
+    backgroundColor: COLORS.accentCyan,
+    paddingHorizontal: 20,
+    paddingVertical: 11,
     borderRadius: RADIUS.full,
-    ...SHADOWS.sm,
+    shadowColor: COLORS.accentCyan,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 4,
   },
   noRouteActionBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0A0F1E',
+  },
+  floatingAiButton: {
+    position: 'absolute',
+    bottom: 22,
+    right: 20,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    zIndex: 999,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#06B6D4',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.65,
+    shadowRadius: 14,
+  },
+  aiGlowRing: {
+    position: 'absolute',
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    backgroundColor: 'rgba(6, 182, 212, 0.22)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(56, 189, 248, 0.45)',
+  },
+  aiButtonInner: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: '#0284C7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#38BDF8',
+  },
+  aiBadgeDot: {
+    position: 'absolute',
+    top: 9,
+    right: 11,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#38BDF8',
   },
 });

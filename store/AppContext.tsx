@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppSettings, UserReport, OfflineArea, Place, RouteOption } from '../types';
 import { APP_CONFIG } from '../constants/config';
+import { useAuth } from './AuthContext';
 
 export interface RecentRouteItem {
   id: string;
@@ -55,6 +56,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   distanceUnit: 'km',
   theme: 'light',
   voiceGuidance: true,
+  travelMode: 'DRIVE',
+  routePreference: 'FASTEST',
 };
 
 const INITIAL_OFFLINE_AREAS: OfflineArea[] = [
@@ -131,6 +134,7 @@ const INITIAL_RECENT_ROUTES: RecentRouteItem[] = [
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, updateUserProfile } = useAuth();
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [reports, setReports] = useState<UserReport[]>(INITIAL_REPORTS);
   const [recentSearches, setRecentSearches] = useState<string[]>([
@@ -151,6 +155,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActiveRoute(null);
     setActiveDestinationPlace(null);
   };
+
+  // Sync settings when authenticated user changes
+  useEffect(() => {
+    if (user) {
+      setSettings((prev) => ({
+        ...prev,
+        travelMode: user.travelMode || prev.travelMode || 'DRIVE',
+        distanceUnit: user.distanceUnit || prev.distanceUnit || 'km',
+        voiceGuidance: user.voiceGuidance !== undefined ? user.voiceGuidance : prev.voiceGuidance,
+        notifications: user.notifications !== undefined ? user.notifications : prev.notifications,
+        wheelchairAccessible: user.wheelchairAccessible !== undefined ? user.wheelchairAccessible : prev.wheelchairAccessible,
+        routePreference: user.routePreference || prev.routePreference || 'FASTEST',
+      }));
+    } else {
+      setSettings(DEFAULT_SETTINGS);
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     loadPersistedData();
@@ -209,6 +230,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         APP_CONFIG.storageKeys.SETTINGS,
         JSON.stringify(updated)
       );
+      if (user && !user.isGuest) {
+        updateUserProfile({ [key]: value }).catch((err) => {
+          console.warn('Failed syncing setting to profile:', err);
+        });
+      }
     } catch (e) {
       console.warn('Failed to save settings', e);
     }

@@ -86,7 +86,7 @@ export const DirectionIndicator: React.FC<DirectionIndicatorProps> = ({
           activeOpacity={0.75}
         >
           <View style={{ transform: [{ rotate: `${headingAngle}deg` }] }}>
-            <Ionicons name="navigate" size={13} color={showVectors ? '#FFFFFF' : COLORS.accent} />
+            <Ionicons name="navigate" size={13} color={showVectors ? '#FFFFFF' : COLORS.accentCyan} />
           </View>
           <Text style={[styles.simButtonText, showVectors && styles.simButtonTextActive]}>
             {headingAngle}° ({showVectors ? 'Close' : 'Change'})
@@ -94,7 +94,7 @@ export const DirectionIndicator: React.FC<DirectionIndicatorProps> = ({
           <Ionicons
             name={showVectors ? 'chevron-up' : 'chevron-down'}
             size={12}
-            color={showVectors ? '#FFFFFF' : COLORS.accent}
+            color={showVectors ? '#FFFFFF' : COLORS.accentCyan}
           />
         </TouchableOpacity>
       </View>
@@ -113,14 +113,14 @@ export const DirectionIndicator: React.FC<DirectionIndicatorProps> = ({
                   onPress={() => handleSelectVector(v)}
                   activeOpacity={0.75}
                 >
-                  <View style={{ transform: [{ rotate: `${v.angle}deg` }], marginRight: 6 }}>
+                  <View style={{ transform: [{ rotate: `${v.angle}deg` }], marginRight: 8 }}>
                     <Ionicons
                       name="navigate"
-                      size={14}
-                      color={isActive ? '#FFFFFF' : COLORS.accent}
+                      size={15}
+                      color={isActive ? COLORS.accentCyan : '#94A3B8'}
                     />
                   </View>
-                  <View>
+                  <View style={{ flex: 1 }}>
                     <Text style={[styles.vectorChipLabel, isActive && styles.vectorChipLabelActive]}>
                       {v.label}
                     </Text>
@@ -143,7 +143,7 @@ export const DirectionIndicator: React.FC<DirectionIndicatorProps> = ({
         {/* Visual Direction Corridor Axis with Animated Orientation */}
         <View style={styles.corridorVisual}>
           <View style={styles.aheadPoint}>
-            <Ionicons name="arrow-up" size={14} color={COLORS.ahead} />
+            <Ionicons name="arrow-up" size={16} color="#10B981" />
             <Text style={styles.aheadLabel}>AHEAD</Text>
           </View>
 
@@ -157,7 +157,7 @@ export const DirectionIndicator: React.FC<DirectionIndicatorProps> = ({
                 { transform: [{ rotate: `${headingAngle}deg` }] },
               ]}
             >
-              <Ionicons name="navigate" size={10} color="#FFFFFF" />
+              <Ionicons name="navigate" size={13} color="#FFFFFF" />
             </View>
             <Text style={styles.userLabel}>YOU</Text>
           </View>
@@ -165,7 +165,7 @@ export const DirectionIndicator: React.FC<DirectionIndicatorProps> = ({
           <View style={styles.lineSegmentBehind} />
 
           <View style={styles.behindPoint}>
-            <Ionicons name="arrow-down" size={12} color={COLORS.behind} />
+            <Ionicons name="arrow-down" size={14} color="#F59E0B" />
             <Text style={styles.behindLabel}>BEHIND</Text>
           </View>
         </View>
@@ -181,20 +181,20 @@ export const DirectionIndicator: React.FC<DirectionIndicatorProps> = ({
             <TouchableOpacity
               style={styles.statPill}
               onPress={handleCycleSpeed}
-              activeOpacity={0.7}
+              activeOpacity={0.75}
             >
-              <Ionicons name="speedometer-outline" size={13} color={COLORS.accent} />
+              <Ionicons name="speedometer" size={14} color={COLORS.accentCyan} />
               <Text style={styles.statText}>{speedKmh} km/h</Text>
-              <Ionicons name="sync-outline" size={10} color={COLORS.textMuted} />
+              <Ionicons name="sync-outline" size={10} color="#64748B" />
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.statPill}
+              style={styles.vectorLockedPill}
               onPress={() => setShowVectors(!showVectors)}
-              activeOpacity={0.7}
+              activeOpacity={0.75}
             >
-              <Ionicons name="compass-outline" size={13} color={COLORS.ahead} />
-              <Text style={[styles.statText, { color: COLORS.ahead, fontWeight: '700' }]}>
+              <Ionicons name="compass" size={14} color="#10B981" />
+              <Text style={styles.vectorLockedText}>
                 {headingAngle}° Vector Locked
               </Text>
             </TouchableOpacity>
@@ -207,14 +207,18 @@ export const DirectionIndicator: React.FC<DirectionIndicatorProps> = ({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: COLORS.cardBg,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
+    backgroundColor: 'rgba(17, 24, 39, 0.95)',
+    borderRadius: 22,
+    padding: 18,
     marginHorizontal: SPACING.lg,
-    marginVertical: SPACING.sm,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    ...SHADOWS.md,
+    marginVertical: 8,
+    borderWidth: 1.5,
+    borderColor: 'rgba(99, 132, 255, 0.22)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.5,
+    shadowRadius: 14,
+    elevation: 6,
   },
   topRow: {
     flexDirection: 'row',
@@ -225,37 +229,54 @@ const styles = StyleSheet.create({
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.accentLight,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    backgroundColor: 'rgba(6, 182, 212, 0.14)',
+    paddingHorizontal: 11,
+    paddingVertical: 5,
     borderRadius: RADIUS.full,
     gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(6, 182, 212, 0.35)',
   },
   pulseDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.accent,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: COLORS.accentCyan,
+    shadowColor: COLORS.accentCyan,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
+    elevation: 3,
   },
   badgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.accent,
-    letterSpacing: 0.5,
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: COLORS.accentCyan,
+    letterSpacing: 0.8,
   },
   simButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.surfaceLight,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: RADIUS.sm,
-    gap: 4,
+    backgroundColor: 'rgba(26, 37, 64, 0.8)',
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+    borderRadius: 12,
+    gap: 5,
+    borderWidth: 1.5,
+    borderColor: 'rgba(99, 132, 255, 0.3)',
+  },
+  simButtonActive: {
+    backgroundColor: COLORS.accentCyan,
+    borderColor: COLORS.accentCyan,
   },
   simButtonText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: COLORS.accent,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#E2E8F0',
+  },
+  simButtonTextActive: {
+    color: '#0A0F1E',
+    fontWeight: '800',
   },
   mainRow: {
     flexDirection: 'row',
@@ -263,26 +284,33 @@ const styles = StyleSheet.create({
   },
   corridorVisual: {
     alignItems: 'center',
-    width: 56,
-    paddingVertical: 8,
-    backgroundColor: COLORS.surfaceLight,
-    borderRadius: RADIUS.md,
+    width: 62,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(10, 15, 30, 0.85)',
+    borderRadius: 16,
     marginRight: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 132, 255, 0.18)',
   },
   aheadPoint: {
     alignItems: 'center',
   },
   aheadLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: COLORS.ahead,
-    marginTop: 1,
+    fontSize: 9.5,
+    fontWeight: '900',
+    color: '#10B981',
+    marginTop: 2,
+    letterSpacing: 0.5,
   },
   lineSegmentAhead: {
-    width: 2,
-    height: 16,
-    backgroundColor: COLORS.ahead,
-    marginVertical: 2,
+    width: 3,
+    height: 18,
+    backgroundColor: '#10B981',
+    borderRadius: 2,
+    marginVertical: 3,
+    shadowColor: '#10B981',
+    shadowOpacity: 0.7,
+    shadowRadius: 6,
   },
   userPoint: {
     alignItems: 'center',
@@ -291,99 +319,125 @@ const styles = StyleSheet.create({
   },
   userPulseRing: {
     position: 'absolute',
-    top: -4,
-    left: -4,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+    top: -5,
+    left: -5,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(6, 182, 212, 0.25)',
   },
   userCoreDot: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: COLORS.onRoute,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#06B6D4',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1.5,
+    borderWidth: 2,
     borderColor: '#FFFFFF',
+    shadowColor: '#06B6D4',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 8,
+    elevation: 4,
   },
   userLabel: {
-    fontSize: 8.5,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
-    marginTop: 2,
+    fontSize: 9.5,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    marginTop: 4,
+    letterSpacing: 0.5,
   },
   lineSegmentBehind: {
-    width: 2,
-    height: 16,
-    backgroundColor: COLORS.behind,
-    marginVertical: 2,
+    width: 3,
+    height: 18,
+    backgroundColor: '#F59E0B',
+    borderRadius: 2,
+    marginVertical: 3,
   },
   behindPoint: {
     alignItems: 'center',
   },
   behindLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: COLORS.behind,
-    marginTop: 1,
+    fontSize: 9.5,
+    fontWeight: '900',
+    color: '#F59E0B',
+    marginTop: 2,
+    letterSpacing: 0.5,
   },
   narrativeCol: {
     flex: 1,
   },
   directionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-    marginBottom: 2,
+    fontSize: 19,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
+    marginBottom: 4,
   },
   directionSubtitle: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    lineHeight: 16,
-    marginBottom: SPACING.sm,
+    fontSize: 12.5,
+    color: '#94A3B8',
+    lineHeight: 18,
+    marginBottom: 12,
   },
   statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
+    gap: 8,
+    flexWrap: 'wrap',
   },
   statPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.surfaceLight,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    backgroundColor: 'rgba(26, 37, 64, 0.85)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: RADIUS.full,
-    gap: 4,
+    gap: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 132, 255, 0.25)',
   },
   statText: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
-    fontWeight: '600',
-  },
-  simButtonActive: {
-    backgroundColor: COLORS.accent,
-  },
-  simButtonTextActive: {
+    fontSize: 12,
     color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  vectorLockedPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.16)',
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: RADIUS.full,
+    gap: 5,
+    borderWidth: 1.5,
+    borderColor: 'rgba(16, 185, 129, 0.45)',
+    shadowColor: '#10B981',
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+  },
+  vectorLockedText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#10B981',
+    letterSpacing: 0.2,
   },
   vectorSelectorBox: {
-    backgroundColor: COLORS.surfaceLight,
+    backgroundColor: 'rgba(13, 22, 40, 0.95)',
     padding: SPACING.md,
     borderRadius: RADIUS.lg,
     marginBottom: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: 'rgba(99, 132, 255, 0.3)',
   },
   vectorSelectorTitle: {
     fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
+    fontWeight: '800',
+    color: '#94A3B8',
     marginBottom: SPACING.sm,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
   vectorGrid: {
     flexDirection: 'row',
@@ -393,30 +447,34 @@ const styles = StyleSheet.create({
   vectorChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.cardBg,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    backgroundColor: 'rgba(26, 37, 64, 0.75)',
+    paddingHorizontal: 11,
+    paddingVertical: 9,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: 'rgba(99, 132, 255, 0.2)',
     width: '48%',
   },
   vectorChipActive: {
-    backgroundColor: COLORS.accent,
-    borderColor: COLORS.accent,
-    ...SHADOWS.sm,
+    backgroundColor: 'rgba(6, 182, 212, 0.22)',
+    borderColor: COLORS.accentCyan,
+    shadowColor: COLORS.accentCyan,
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 3,
   },
   vectorChipLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   vectorChipLabelActive: {
-    color: '#FFFFFF',
+    color: COLORS.accentCyan,
   },
   vectorChipSub: {
     fontSize: 10,
-    color: COLORS.textMuted,
+    color: '#64748B',
+    marginTop: 1,
   },
   vectorChipSubActive: {
     color: 'rgba(255, 255, 255, 0.85)',

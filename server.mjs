@@ -460,9 +460,391 @@ app.post('/api/process-journey', async (req, res) => {
   }
 });
 
+// ==========================================
+// SECURE USER AUTHENTICATION & DATABASE LAYER
+// ==========================================
+import crypto from 'crypto';
+import fs from 'fs';
+
+const DB_FILE = path.join(__dirname, 'data', 'auth_db.json');
+
+function loadAuthDb() {
+  try {
+    if (!fs.existsSync(path.dirname(DB_FILE))) {
+      fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
+    }
+    if (fs.existsSync(DB_FILE)) {
+      return JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
+    }
+  } catch (e) {
+    console.error('Error loading Auth DB:', e);
+  }
+  return { users: {}, profiles: {}, sessions: {} };
+}
+
+function saveAuthDb(data) {
+  try {
+    if (!fs.existsSync(path.dirname(DB_FILE))) {
+      fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
+    }
+    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('Error saving Auth DB:', e);
+  }
+}
+
+function hashPassword(password, salt) {
+  return crypto.scryptSync(password, salt, 64).toString('hex');
+}
+
+// 1. REGISTER ENDPOINT
+app.post('/api/auth/register', (req, res) => {
+  try {
+    const { name, email, password } = req.body || {};
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required.' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const db = loadAuthDb();
+
+    // Check existing user
+    const existing = Object.values(db.users).find((u) => u.email === normalizedEmail);
+    if (existing) {
+      return res.status(400).json({ error: 'An account with this email already exists.' });
+    }
+
+    const userId = `usr_${crypto.randomUUID()}`;
+    const salt = crypto.randomBytes(16).toString('hex');
+    const passwordHash = hashPassword(password, salt);
+    const now = new Date().toISOString();
+
+    // Store secure auth credentials (salted hash, never plain text)
+    db.users[userId] = {
+      id: userId,
+      email: normalizedEmail,
+      password_hash: passwordHash,
+      salt: salt,
+      created_at: now,
+    };
+
+    // Store user profile linked by unique user_id
+    const displayName = (name || '').trim() || normalizedEmail.split('@')[0];
+    const formattedName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
+
+    db.profiles[userId] = {
+      id: userId,
+      user_id: userId,
+      name: formattedName,
+      email: normalizedEmail,
+      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80',
+      isGuest: false,
+      travelMode: 'DRIVE',
+      distanceUnit: 'km',
+      voiceGuidance: true,
+      notifications: true,
+      wheelchairAccessible: false,
+      routePreference: 'FASTEST',
+      savedPlacesCount: 0,
+      reportsCount: 0,
+      recentSearches: ['Coffee', 'ATM'],
+      created_at: now,
+      updated_at: now,
+    };
+
+    const token = `tok_${crypto.randomBytes(32).toString('hex')}`;
+    db.sessions[token] = { userId, createdAt: Date.now() };
+
+    saveAuthDb(db);
+
+    console.log(`✅ Registered new authenticated user: ${userId} (${normalizedEmail})`);
+    res.json({ user: db.profiles[userId], token });
+  } catch (err) {
+    console.error('Registration failure:', err);
+    res.status(500).json({ error: 'Registration failed. Please try again.' });
+  }
+});
+
+// 2. LOGIN ENDPOINT
+app.post('/api/auth/login', (req, res) => {
+  try {
+    const { email, password } = req.body || {};
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Please enter your email and password.' });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const db = loadAuthDb();
+
+    // Find user by normalized email
+    const userAuth = Object.values(db.users).find((u) => u.email === normalizedEmail);
+    if (!userAuth) {
+      console.warn(`❌ Login rejected: User not found for "${normalizedEmail}"`);
+      return res.status(401).json({ error: 'Incorrect username or password.' });
+    }
+
+    // Verify salted password hash
+    const computedHash = hashPassword(password, userAuth.salt);
+    if (computedHash !== userAuth.password_hash) {
+      console.warn(`❌ Login rejected: Incorrect password for "${normalizedEmail}"`);
+      return res.status(401).json({ error: 'Incorrect username or password.' });
+    }
+
+    const userId = userAuth.id;
+    const profile = db.profiles[userId];
+    if (!profile) {
+      return res.status(500).json({ error: 'Profile record not found.' });
+    }
+
+    const token = `tok_${crypto.randomBytes(32).toString('hex')}`;
+    db.sessions[token] = { userId, createdAt: Date.now() };
+    saveAuthDb(db);
+
+    console.log(`✅ Authenticated user: ${userId} (${normalizedEmail})`);
+    res.json({ user: profile, token });
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ error: 'Authentication failed. Please try again.' });
+  }
+});
+
+// 3. GET CURRENT PROFILE ENDPOINT
+app.get('/api/auth/me', (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    if (!token) {
+      return res.status(401).json({ error: 'No authorization token provided.' });
+    }
+
+    const db = loadAuthDb();
+    const session = db.sessions[token];
+    if (!session || !session.userId) {
+      return res.status(401).json({ error: 'Invalid or expired session.' });
+    }
+
+    const profile = db.profiles[session.userId];
+    if (!profile) {
+      return res.status(404).json({ error: 'User profile not found.' });
+    }
+
+    res.json({ user: profile });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed retrieving profile.' });
+  }
+});
+
+// 4. UPDATE PROFILE ENDPOINT
+app.post('/api/auth/update-profile', (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    const { userId: bodyUserId, updates } = req.body || {};
+
+    const db = loadAuthDb();
+    let targetUserId = null;
+
+    if (token && db.sessions[token]) {
+      targetUserId = db.sessions[token].userId;
+    } else if (bodyUserId && db.profiles[bodyUserId]) {
+      targetUserId = bodyUserId;
+    }
+
+    if (!targetUserId || !db.profiles[targetUserId]) {
+      return res.status(401).json({ error: 'Unauthorized to update profile.' });
+    }
+
+    const current = db.profiles[targetUserId];
+    const updated = {
+      ...current,
+      ...updates,
+      id: targetUserId,
+      user_id: targetUserId,
+      updated_at: new Date().toISOString(),
+    };
+
+    db.profiles[targetUserId] = updated;
+    saveAuthDb(db);
+
+    console.log(`📝 Updated profile for ${targetUserId}:`, {
+      name: updated.name,
+      travelMode: updated.travelMode,
+      distanceUnit: updated.distanceUnit,
+    });
+
+    res.json({ user: updated });
+  } catch (err) {
+    console.error('Update profile error:', err);
+    res.status(500).json({ error: 'Failed updating profile.' });
+  }
+});
+
+// 5. LOGOUT ENDPOINT
+app.post('/api/auth/logout', (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    if (token) {
+      const db = loadAuthDb();
+      delete db.sessions[token];
+      saveAuthDb(db);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.json({ success: true });
+  }
+});
+
+// 7. SPECFINDER AUTONOMOUS VOICE AI ENDPOINT
+app.post('/api/ai/voice-turn', async (req, res) => {
+  try {
+    const { message, history = [], currentLocation, userHeading, isInitialGreeting } = req.body || {};
+
+    if (isInitialGreeting) {
+      return res.json({
+        greeting: "Hello and welcome to SpecFinder, an autonomous AI integrated service.",
+        followUpPrompt: "Tell me where you'd like to go or what you'd like me to find along your journey."
+      });
+    }
+
+    if (!message || typeof message !== 'string') {
+      return res.status(400).json({ error: 'Message text is required.' });
+    }
+
+    if (!ai || !apiKey) {
+      return res.status(503).json({
+        error: 'Gemini AI service is not initialized on the server.',
+        fallbackMessage: "Voice assistant is temporarily unavailable. Please try again."
+      });
+    }
+
+    // Build system instructions with context
+    const locContext = currentLocation
+      ? `User's current coordinates: (${currentLocation.latitude}, ${currentLocation.longitude}), heading: ${userHeading || 45} degrees.`
+      : `User's current location: Cyber Towers Junction, Hyderabad (17.4375, 78.3852).`;
+
+    const systemInstruction = `You are "SpecFinder AI", an autonomous voice AI navigation assistant for SpecFinder.
+Current location context: ${locContext}
+
+CRITICAL RULES FOR CONVERSATION:
+1. You communicate via voice. Keep spoken responses natural, concise (1-2 sentences), and direct.
+2. If the user's intent is ambiguous (for example: "I need food" without specifying if they want it nearby or along a journey, or "Find a pharmacy" with no destination), ask a clarifying follow-up question (e.g., "Would you like food nearby or along your journey?").
+3. If the user specifies a destination (e.g., "I want to go to Charminar", "Take me to Gachibowli", "I'm going to the airport"), call the resolve_destination tool.
+4. If the user asks for places along their route (e.g., "Find me a petrol pump on the way to Gachibowli", "Find coffee before I reach Charminar"), call resolve_destination and find_places.
+5. When the destination and task are sufficiently specified, indicate that the route is ready and call start_navigation so the app can autonomously launch navigation.
+6. Do NOT ask unnecessary questions if the request is already clear.`;
+
+    // Map conversation history
+    const contents = [];
+    if (Array.isArray(history)) {
+      for (const turn of history) {
+        if (turn.role && turn.parts) {
+          contents.push(turn);
+        } else if (turn.role && turn.content) {
+          contents.push({
+            role: turn.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: turn.content }]
+          });
+        }
+      }
+    }
+    contents.push({ role: 'user', parts: [{ text: message }] });
+
+    const tools = [{
+      functionDeclarations: [
+        {
+          name: "resolve_destination",
+          description: "Resolve a destination place, address, or landmark to coordinates.",
+          parameters: {
+            type: Type.OBJECT,
+            properties: {
+              destinationName: { type: Type.STRING, description: "Name of the target destination place or landmark" }
+            },
+            required: ["destinationName"]
+          }
+        },
+        {
+          name: "calculate_route",
+          description: "Calculate driving route to destination using origin and destination coordinates.",
+          parameters: {
+            type: Type.OBJECT,
+            properties: {
+              destinationName: { type: Type.STRING, description: "Name of the destination" },
+              travelMode: { type: Type.STRING, description: "Travel mode (DRIVE, WALK, BICYCLE, TRANSIT)" }
+            },
+            required: ["destinationName"]
+          }
+        },
+        {
+          name: "find_places",
+          description: "Find places of a specific category along the route corridor or near destination.",
+          parameters: {
+            type: Type.OBJECT,
+            properties: {
+              category: { type: Type.STRING, description: "Place category: petrol, coffee, pharmacy, restaurant, atm, hospital, shopping" },
+              destinationName: { type: Type.STRING, description: "Destination name or target corridor" }
+            },
+            required: ["category"]
+          }
+        },
+        {
+          name: "start_navigation",
+          description: "Confirm task completion and launch autonomous navigation.",
+          parameters: {
+            type: Type.OBJECT,
+            properties: {
+              destinationName: { type: Type.STRING, description: "Confirmed destination name" },
+              waypointPlaceName: { type: Type.STRING, description: "Optional name of place found along route" }
+            },
+            required: ["destinationName"]
+          }
+        }
+      ]
+    }];
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash-lite",
+      contents,
+      config: {
+        systemInstruction,
+        tools,
+      }
+    });
+
+    const text = response.text || "";
+    const functionCalls = response.functionCalls || [];
+
+    res.json({
+      success: true,
+      text,
+      functionCalls,
+    });
+  } catch (err) {
+    console.error('[VoiceAI Error]:', err);
+    res.status(500).json({
+      error: 'Failed to process voice request',
+      fallbackMessage: "Voice assistant is temporarily unavailable. Please try again."
+    });
+  }
+});
+
+// 6. HEALTH CHECK ENDPOINT
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    server: 'CTRL+WIN Navigation & Auth Backend',
+    port: PORT,
+    timestamp: new Date().toISOString(),
+  });
+});
+
 const PORT = process.env.PORT || 3000;
-export const server = app.listen(PORT, () => {
-  console.log(`🚀 CTRL+WIN Application Live at http://localhost:${PORT}`);
+const HOST = process.env.HOST || '0.0.0.0';
+export const server = app.listen(PORT, HOST, () => {
+  console.log(`🚀 CTRL+WIN Application Live on http://${HOST}:${PORT} (all network interfaces)`);
 });
 
 export default app;
