@@ -47,6 +47,7 @@ const AUDIO_BRIDGE_HTML = `
     let lastSpeechTime = 0;
     let currentInterimTranscript = '';
     let isListeningActive = false;
+    let accumulatedPcmChunks = [];
 
     function getAudioContext() {
       if (!audioCtx) {
@@ -116,12 +117,25 @@ const AUDIO_BRIDGE_HTML = `
 
     // Begin single-utterance microphone capture
     window.startRecording = async function() {
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'log_starting' }));
+      }
+
       getAudioContext();
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'mic_failed',
+            reason: 'navigator.mediaDevices.getUserMedia is not supported in this WebView environment'
+          }));
+        }
+        return;
+      }
 
       hasSpoken = false;
       lastSpeechTime = 0;
       currentInterimTranscript = '';
+      accumulatedPcmChunks = [];
       isListeningActive = true;
 
       try {
@@ -135,11 +149,17 @@ const AUDIO_BRIDGE_HTML = `
           }
         });
 
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'log_started' }));
+        }
+
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
         const micCtx = new AudioCtx({ sampleRate: 16000 });
         const source = micCtx.createMediaStreamSource(micStream);
         const processor = micCtx.createScriptProcessor(4096, 1, 1);
         micProcessor = processor;
+
+        let hasLoggedFirstAudio = false;
 
         processor.onaudioprocess = function(e) {
           if (!isListeningActive) return;
@@ -153,6 +173,17 @@ const AUDIO_BRIDGE_HTML = `
             sumSquares += s * s;
           }
           const rms = Math.sqrt(sumSquares / inputData.length);
+
+          // Test 2 log: Log first time actual audio input is captured from microphone
+          if (!hasLoggedFirstAudio && rms > 0.002) {
+            hasLoggedFirstAudio = true;
+            if (window.ReactNativeWebView) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'log_input_received',
+                rms: rms
+              }));
+            }
+          }
 
           // Energy-based Voice Activity Detection
           if (rms > 0.04) {
@@ -172,6 +203,7 @@ const AUDIO_BRIDGE_HTML = `
             binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
           }
           const base64Audio = btoa(binary);
+          accumulatedPcmChunks.push(base64Audio);
 
           if (window.ReactNativeWebView) {
             window.ReactNativeWebView.postMessage(JSON.stringify({
@@ -186,6 +218,12 @@ const AUDIO_BRIDGE_HTML = `
         processor.connect(micCtx.destination);
       } catch (err) {
         console.warn('Mic init error:', err);
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'mic_failed',
+            reason: (err.name || 'Error') + ': ' + (err.message || 'permission denied')
+          }));
+        }
       }
 
       startSingleSpeechRecognition();
@@ -196,12 +234,14 @@ const AUDIO_BRIDGE_HTML = `
       if (!isListeningActive) return;
       isListeningActive = false;
 
+      const combinedAudio = accumulatedPcmChunks.join('');
       window.stopRecording();
 
       if (window.ReactNativeWebView) {
         window.ReactNativeWebView.postMessage(JSON.stringify({
           type: 'end_of_speech',
-          text: transcript || currentInterimTranscript
+          text: transcript || currentInterimTranscript,
+          pcmAudio: combinedAudio
         }));
       }
     }
@@ -362,12 +402,20 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
     try {
       const msg = JSON.parse(event.nativeEvent.data);
 
-      if (msg.type === 'mic_pcm') {
+      if (msg.type === 'log_starting') {
+        console.log('[SpecFinder AI] Starting microphone...');
+      } else if (msg.type === 'log_started') {
+        console.log('[SpecFinder AI] Microphone started');
+      } else if (msg.type === 'log_input_received') {
+        console.log(`[SpecFinder AI] Audio input received (RMS: ${msg.rms?.toFixed(4)})`);
+      } else if (msg.type === 'mic_failed') {
+        console.warn(`[SpecFinder AI] Microphone failed to start: ${msg.reason}`);
+      } else if (msg.type === 'mic_pcm') {
         voiceAiService.handleMicrophoneChunk(msg.data, msg.rms);
       } else if (msg.type === 'user_speech_interim') {
         voiceAiService.handleUserSpeechInterim(msg.text);
       } else if (msg.type === 'end_of_speech') {
-        voiceAiService.handleEndOfUserSpeech(msg.text);
+        voiceAiService.handleEndOfUserSpeech(msg.text, msg.pcmAudio);
       } else if (msg.type === 'ai_speech_ended') {
         voiceAiService.handleAiSpeechEnded();
       }
@@ -647,6 +695,7 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
               originWhitelist={['*']}
               allowsInlineMediaPlayback={true}
               mediaPlaybackRequiresUserAction={false}
+              mediaCapturePermissionGrantType="grant"
               javaScriptEnabled={true}
               domStorageEnabled={true}
               style={styles.hiddenWebView}

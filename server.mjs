@@ -833,6 +833,49 @@ CRITICAL RULES FOR CONVERSATION:
   }
 });
 
+// 5.5 AUDIO TRANSCRIPTION ENDPOINT (DIAGNOSTIC & SPEECH-TO-TEXT)
+app.post('/api/ai/transcribe', async (req, res) => {
+  try {
+    const { pcmBase64, sampleRate = 16000 } = req.body;
+    if (!pcmBase64) {
+      return res.status(400).json({ error: 'No audio provided' });
+    }
+
+    if (!ai) {
+      return res.status(500).json({ error: 'Gemini AI not initialized' });
+    }
+
+    console.log(`[SpecFinder AI] Processing audio input (${pcmBase64.length} chars, sampleRate: ${sampleRate}Hz)`);
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash-lite",
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              inlineData: {
+                mimeType: `audio/pcm;rate=${sampleRate}`,
+                data: pcmBase64
+              }
+            },
+            {
+              text: "Listen carefully to this user voice audio and transcribe the exact spoken words into English text. Return ONLY the transcribed text without quotes, punctuation, labels, or explanation. If the audio is silent or unintelligible noise, return an empty string."
+            }
+          ]
+        }
+      ]
+    });
+
+    const transcript = (response.text || "").trim();
+    console.log(`[SpecFinder AI] Recognized speech: "${transcript}"`);
+    res.json({ success: true, transcript });
+  } catch (err) {
+    console.error('[Transcribe Error]:', err?.message || err);
+    res.status(500).json({ error: 'Transcription failed: ' + (err?.message || 'unknown error') });
+  }
+});
+
 // 6. HEALTH CHECK ENDPOINT
 app.get('/api/health', (req, res) => {
   res.json({

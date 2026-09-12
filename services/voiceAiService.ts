@@ -1,5 +1,5 @@
 import * as Speech from 'expo-speech';
-import { Platform } from 'react-native';
+import { Platform, PermissionsAndroid } from 'react-native';
 import { getRecordingPermissionsAsync, requestRecordingPermissionsAsync } from 'expo-audio';
 import { Place, RouteOption, Coordinates } from '../types';
 import { placesService } from './placesService';
@@ -160,30 +160,72 @@ class VoiceAiService {
    */
   public async ensureMicrophonePermission(): Promise<{ granted: boolean; error?: string }> {
     try {
+      if (Platform.OS === 'android') {
+        const hasPerm = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
+        if (hasPerm) {
+          console.log('[SpecFinder AI] Microphone permission: GRANTED');
+          return { granted: true };
+        }
+
+        const res = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+          {
+            title: 'Microphone Permission',
+            message: 'SpecFinder needs access to your microphone for voice commands.',
+            buttonPositive: 'Grant Permission',
+            buttonNegative: 'Deny',
+          }
+        );
+
+        if (res === PermissionsAndroid.RESULTS.GRANTED) {
+          console.log('[SpecFinder AI] Microphone permission: GRANTED');
+          return { granted: true };
+        } else {
+          console.log('[SpecFinder AI] Microphone permission: DENIED');
+          return {
+            granted: false,
+            error: 'Microphone permission DENIED by user. Please enable microphone permission in Android device settings.',
+          };
+        }
+      }
+
       if (Platform.OS === 'web') {
         if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
           try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             stream.getTracks().forEach((t) => t.stop());
+            console.log('[SpecFinder AI] Microphone permission: GRANTED');
             return { granted: true };
           } catch (e: any) {
+            console.log('[SpecFinder AI] Microphone permission: DENIED');
             return { granted: false, error: 'Microphone permission denied by browser.' };
           }
         }
+        console.log('[SpecFinder AI] Microphone permission: GRANTED');
         return { granted: true };
       }
 
       const check = await getRecordingPermissionsAsync();
-      if (check.granted) return { granted: true };
+      if (check.granted) {
+        console.log('[SpecFinder AI] Microphone permission: GRANTED');
+        return { granted: true };
+      }
 
       const req = await requestRecordingPermissionsAsync();
-      return {
-        granted: req.granted,
-        error: req.granted ? undefined : 'Microphone permission denied.',
-      };
+      if (req.granted) {
+        console.log('[SpecFinder AI] Microphone permission: GRANTED');
+        return { granted: true };
+      } else {
+        console.log('[SpecFinder AI] Microphone permission: DENIED');
+        return {
+          granted: false,
+          error: 'Microphone permission DENIED.',
+        };
+      }
     } catch (e: any) {
-      console.warn('[VoiceAi] Mic permission check warning:', e?.message);
-      return { granted: true };
+      console.warn('[SpecFinder AI] Mic permission check warning:', e?.message);
+      console.log('[SpecFinder AI] Microphone permission: DENIED');
+      return { granted: false, error: 'Microphone permission check error: ' + e?.message };
     }
   }
 
@@ -294,17 +336,37 @@ class VoiceAiService {
   }
 
   /**
+   * Transcribe PCM audio via Gemini backend endpoint
+   */
+  public async transcribeAudio(pcmBase64: string): Promise<string> {
+    try {
+      const baseUrl = getApiBaseUrl();
+      console.log(`[SpecFinder AI] Transcribing captured microphone audio via ${baseUrl}/api/ai/transcribe...`);
+      const res = await fetch(`${baseUrl}/api/ai/transcribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pcmBase64, sampleRate: 16000 }),
+      });
+      const data = await res.json();
+      const text = (data.transcript || '').trim();
+      console.log(`[SpecFinder AI] Transcribed text: "${text}"`);
+      return text;
+    } catch (err: any) {
+      console.warn('[SpecFinder AI] Audio transcription request error:', err?.message || err);
+      return '';
+    }
+  }
+
+  /**
    * TRIGGERED WHEN VOICE ACTIVITY DETECTION DETECTS END OF SPEECH:
    * 1. Stop microphone listening immediately
-   * 2. Lock the user utterance in display
-   * 3. Transition to PROCESSING
-   * 4. Submit command to Gemini
+   * 2. If audio was recorded without native transcription, transcribe via Gemini
+   * 3. Lock the user utterance in display: YOU: "<recognized words>"
+   * 4. Transition to PROCESSING
+   * 5. Submit command to Gemini
    */
-  public handleEndOfUserSpeech(finalText: string): void {
-    const trimmed = (finalText || this.conversation.userUtterance).trim();
-    if (!trimmed) return;
-
-    console.log(`🎤 End of user speech detected: "${trimmed}" -> Stopping microphone now.`);
+  public async handleEndOfUserSpeech(finalText: string, pcmAudio?: string): Promise<void> {
+    console.log('[SpecFinder AI] End of speech triggered. Finalizing utterance...');
 
     // 1. Physically stop listening!
     if (this.audioBridge) {
@@ -324,14 +386,35 @@ class VoiceAiService {
       } catch (e) {}
     }
 
+    let recognized = (finalText || '').trim();
+
+    // If text was empty (e.g. Android WebView where Web Speech API is absent), transcribe recorded PCM audio
+    if (!recognized && pcmAudio) {
+      this.setStatus('PROCESSING');
+      this.updateAiUtterance('Understanding your voice...');
+      recognized = await this.transcribeAudio(pcmAudio);
+    }
+
+    if (!recognized) {
+      recognized = this.conversation.userUtterance.trim();
+    }
+
+    if (!recognized) {
+      console.log('[SpecFinder AI] No speech recognized from microphone input.');
+      this.setStatus('LISTENING');
+      return;
+    }
+
+    console.log(`[SpecFinder AI] Spoken command recognized: "${recognized}"`);
+
     // 2. Lock user utterance in display
-    this.updateUserUtterance(trimmed);
+    this.updateUserUtterance(recognized);
 
     // 3. Transition to PROCESSING
     this.setStatus('PROCESSING');
 
     // 4. Send finalized utterance to Gemini
-    this.sendLiveTextInput(trimmed);
+    this.sendLiveTextInput(recognized);
   }
 
   /**

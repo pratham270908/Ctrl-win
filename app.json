@@ -37,6 +37,10 @@
         "backgroundColor": "#0F172A"
       },
       "package": "com.smartdirectional.finder",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
       "config": {
         "googleMaps": {
           "apiKey": "AIzaSyDPsFxq8EsMMKXauVKGly3ToqjYXX1_wCc"
