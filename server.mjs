@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import { GoogleGenAI, Type } from "@google/genai";
+import wsPkg from 'ws';
+const WebSocketServer = wsPkg.Server || wsPkg.default?.Server || wsPkg;
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
@@ -847,4 +849,133 @@ export const server = app.listen(PORT, HOST, () => {
   console.log(`🚀 CTRL+WIN Application Live on http://${HOST}:${PORT} (all network interfaces)`);
 });
 
+// ==========================================
+// 8. GEMINI LIVE API WEBSOCKET STREAMING PROXY
+// ==========================================
+export const wss = new WebSocketServer({ server, path: '/api/ai/live-stream' });
+
+wss.on('connection', async (ws) => {
+  console.log('⚡ Client connected to Gemini Live WebSocket stream');
+  let liveSession = null;
+
+  try {
+    if (!ai || !apiKey) {
+      ws.send(JSON.stringify({ type: 'error', message: 'Gemini AI not configured' }));
+      ws.close();
+      return;
+    }
+
+    liveSession = await ai.live.connect({
+      model: 'gemini-3.1-flash-live-preview',
+      config: {
+        responseModalities: ['AUDIO'],
+        systemInstruction: {
+          parts: [{
+            text: `You are "SpecFinder AI", an autonomous real-time voice AI navigation assistant.
+Your starting greeting must begin with: "Hello and welcome to SpecFinder, an autonomous AI integrated service." followed by naturally asking: "Tell me where you'd like to go or what you'd like me to find along your journey."
+Keep spoken replies concise, natural (1-2 sentences), and direct.
+When the user specifies a destination (e.g. "I want to go to Charminar", "Take me to Gachibowli"), call resolve_destination.
+When the user asks for stops along the way (e.g. "Find a petrol station on the way"), call find_places with the category and target destination.
+If the user changes their mind (e.g. "Actually change destination to Kondapur"), acknowledge and call resolve_destination with the new destination.
+When the destination is confirmed, say "Starting navigation now." and call start_navigation.`
+          }]
+        },
+        tools: [{
+          functionDeclarations: [
+            {
+              name: "resolve_destination",
+              description: "Resolve a target destination place or landmark to coordinates.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: { destinationName: { type: Type.STRING, description: "Name of target destination" } },
+                required: ["destinationName"]
+              }
+            },
+            {
+              name: "calculate_route",
+              description: "Calculate driving route to destination.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: { destinationName: { type: Type.STRING, description: "Destination name" }, travelMode: { type: Type.STRING, description: "Travel mode" } },
+                required: ["destinationName"]
+              }
+            },
+            {
+              name: "find_places",
+              description: "Find places of a specific category along the route corridor or near destination.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: { category: { type: Type.STRING, description: "Category name" }, destinationName: { type: Type.STRING, description: "Destination name" } },
+                required: ["category"]
+              }
+            },
+            {
+              name: "start_navigation",
+              description: "Confirm task completion and trigger autonomous navigation.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: { destinationName: { type: Type.STRING, description: "Destination name" } },
+                required: ["destinationName"]
+              }
+            }
+          ]
+        }]
+      },
+      callbacks: {
+        onopen: () => {
+          console.log('[Gemini Live] Underlying WebSocket opened');
+        },
+        onmessage: (msg) => {
+          if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify({ type: 'gemini', data: msg }));
+          }
+        },
+        onerror: (err) => {
+          console.error('[Gemini Live Error]:', err?.message);
+          if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify({ type: 'error', message: err?.message || 'Live session error' }));
+          }
+        },
+        onclose: () => {
+          if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify({ type: 'closed' }));
+          }
+        }
+      }
+    });
+
+    console.log('[Gemini Live] Session established and ready for input');
+    if (ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify({ type: 'ready' }));
+    }
+
+    ws.on('message', (data) => {
+      try {
+        const parsed = JSON.parse(data.toString());
+        if (parsed.type === 'realtimeInput' && liveSession) {
+          liveSession.sendRealtimeInput(parsed.data);
+        } else if (parsed.type === 'toolResponse' && liveSession) {
+          liveSession.sendToolResponse(parsed.data);
+        }
+      } catch (err) {
+        console.error('[WebSocket message parse error]:', err);
+      }
+    });
+
+    ws.on('close', () => {
+      console.log('Client disconnected from Live WebSocket stream');
+      if (liveSession) {
+        try { liveSession.close(); } catch (e) {}
+      }
+    });
+  } catch (e) {
+    console.error('[Live WebSocket Connection Error]:', e);
+    if (ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify({ type: 'error', message: e.message }));
+      ws.close();
+    }
+  }
+});
+
 export default app;
+

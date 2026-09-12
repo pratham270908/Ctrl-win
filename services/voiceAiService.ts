@@ -10,6 +10,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 
 export type VoiceAiStatus =
   | 'IDLE'
+  | 'READY'
   | 'LISTENING'
   | 'THINKING'
   | 'SPEAKING'
@@ -29,18 +30,12 @@ export interface VoiceTaskState {
   waypointPlace: Place | null;
 }
 
-export interface ConversationTurn {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
 class VoiceAiService {
   private currentStatus: VoiceAiStatus = 'IDLE';
   private statusListeners: Array<(status: VoiceAiStatus) => void> = [];
   private transcriptListeners: Array<(text: string) => void> = [];
   private taskStateListeners: Array<(state: VoiceTaskState) => void> = [];
 
-  private history: ConversationTurn[] = [];
   private taskState: VoiceTaskState = {
     destination: null,
     destinationCoordinates: null,
@@ -53,7 +48,26 @@ class VoiceAiService {
     waypointPlace: null,
   };
 
-  private webSpeechRecognition: any = null;
+  // Live WebSocket session connection
+  private wsConnection: WebSocket | null = null;
+  private directLiveSession: any = null;
+
+  // Web Audio Context for mic streaming & PCM playback
+  private audioContext: any = null;
+  private micStream: any = null;
+  private micProcessor: any = null;
+  private audioPlaybackQueue: any[] = [];
+  private activeBufferSources: any[] = [];
+  private nextPlayTime: number = 0;
+
+  // Continuous speech recognition
+  private speechRecognizer: any = null;
+
+  // Callbacks
+  private onAutonomousNavigationCb: ((place: Place, route: RouteOption) => void) | null = null;
+
+  // Generation counter to cancel superseded/stale tasks
+  private taskGeneration: number = 0;
 
   public getStatus(): VoiceAiStatus {
     return this.currentStatus;
@@ -101,7 +115,7 @@ class VoiceAiService {
   }
 
   /**
-   * Check and request microphone permission safely without crashing
+   * Request microphone permission safely
    */
   public async ensureMicrophonePermission(): Promise<{ granted: boolean; error?: string }> {
     try {
@@ -109,19 +123,17 @@ class VoiceAiService {
         if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
           try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            stream.getTracks().forEach((track) => track.stop());
+            stream.getTracks().forEach((t) => t.stop());
             return { granted: true };
-          } catch (webErr: any) {
-            return { granted: false, error: 'Microphone access denied in browser settings.' };
+          } catch (e: any) {
+            return { granted: false, error: 'Microphone permission denied by browser.' };
           }
         }
         return { granted: true };
       }
 
       const check = await getRecordingPermissionsAsync();
-      if (check.granted) {
-        return { granted: true };
-      }
+      if (check.granted) return { granted: true };
 
       const req = await requestRecordingPermissionsAsync();
       return {
@@ -129,59 +141,291 @@ class VoiceAiService {
         error: req.granted ? undefined : 'Microphone permission was denied by device.',
       };
     } catch (e: any) {
-      console.warn('[VoiceAi] Microphone permission check warning:', e?.message);
+      console.warn('[VoiceAi] Mic permission check warning:', e?.message);
       return { granted: true };
     }
   }
 
   /**
-   * Speak via native device text-to-speech
+   * Initialize Web Audio Context for real-time PCM audio playback
    */
-  public async speak(text: string, onComplete?: () => void): Promise<void> {
-    try {
-      await Speech.stop();
-      this.setStatus('SPEAKING');
-      this.emitTranscript(text);
+  private getAudioContext(): any {
+    if (typeof window !== 'undefined') {
+      const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx && !this.audioContext) {
+        this.audioContext = new AudioCtx({ sampleRate: 24000 });
+      }
+      if (this.audioContext && this.audioContext.state === 'suspended') {
+        this.audioContext.resume().catch(() => {});
+      }
+    }
+    return this.audioContext;
+  }
 
-      Speech.speak(text, {
-        language: 'en-US',
-        pitch: 1.0,
-        rate: 0.98,
-        onDone: () => {
-          if (onComplete) {
-            onComplete();
-          } else {
-            this.setStatus('LISTENING');
-          }
-        },
-        onError: () => {
-          if (onComplete) onComplete();
-          else this.setStatus('LISTENING');
+  /**
+   * Immediately stops all active audio playback and clears queued audio buffers (Interruption / Barge-in)
+   */
+  public stopAllAudioPlayback(): void {
+    try {
+      Speech.stop();
+    } catch (e) {}
+
+    if (this.activeBufferSources.length > 0) {
+      this.activeBufferSources.forEach((source) => {
+        try {
+          source.stop();
+          source.disconnect();
+        } catch (e) {}
+      });
+      this.activeBufferSources = [];
+    }
+    this.audioPlaybackQueue = [];
+    this.nextPlayTime = 0;
+
+    if (this.currentStatus === 'SPEAKING') {
+      this.setStatus('LISTENING');
+    }
+  }
+
+  /**
+   * Enqueues and plays a 24kHz Base64 PCM audio chunk from Gemini Live
+   */
+  private playPcmChunk(base64Pcm: string): void {
+    const ctx = this.getAudioContext();
+    if (!ctx) return;
+
+    try {
+      const binaryString = atob(base64Pcm);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      const int16Array = new Int16Array(bytes.buffer);
+      const float32Array = new Float32Array(int16Array.length);
+      for (let i = 0; i < int16Array.length; i++) {
+        float32Array[i] = int16Array[i] / 32768.0;
+      }
+
+      const audioBuffer = ctx.createBuffer(1, float32Array.length, 24000);
+      audioBuffer.copyToChannel(float32Array, 0);
+
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(ctx.destination);
+
+      const startTime = Math.max(ctx.currentTime, this.nextPlayTime);
+      source.start(startTime);
+      this.nextPlayTime = startTime + audioBuffer.duration;
+      this.activeBufferSources.push(source);
+
+      source.onended = () => {
+        const idx = this.activeBufferSources.indexOf(source);
+        if (idx !== -1) this.activeBufferSources.splice(idx, 1);
+        if (this.activeBufferSources.length === 0 && this.currentStatus === 'SPEAKING') {
+          this.setStatus('LISTENING');
+        }
+      };
+
+      if (this.currentStatus !== 'SPEAKING') {
+        this.setStatus('SPEAKING');
+      }
+    } catch (err) {
+      console.warn('[VoiceAi] Error playing PCM chunk:', err);
+    }
+  }
+
+  /**
+   * Starts persistent live microphone stream
+   */
+  private async startContinuousMicrophone(): Promise<void> {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          sampleRate: 16000,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
         },
       });
+      this.micStream = stream;
+
+      const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+      const micCtx = new AudioCtx({ sampleRate: 16000 });
+      const micSource = micCtx.createMediaStreamSource(stream);
+
+      // 4096 samples buffer at 16kHz (~250ms per chunk)
+      const processor = micCtx.createScriptProcessor(4096, 1, 1);
+      this.micProcessor = processor;
+
+      processor.onaudioprocess = (e: any) => {
+        const inputData = e.inputBuffer.getChannelData(0);
+
+        // Simple VAD energy detection for instant client-side barge-in
+        let sumSquares = 0;
+        const pcm16 = new Int16Array(inputData.length);
+        for (let i = 0; i < inputData.length; i++) {
+          const s = Math.max(-1, Math.min(1, inputData[i]));
+          pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+          sumSquares += s * s;
+        }
+
+        const rms = Math.sqrt(sumSquares / inputData.length);
+        if (rms > 0.04 && this.currentStatus === 'SPEAKING') {
+          // User is speaking while AI is speaking -> Immediate Barge-in!
+          this.stopAllAudioPlayback();
+        }
+
+        // Convert PCM16 to Base64
+        let binary = '';
+        const bytes = new Uint8Array(pcm16.buffer);
+        const chunkSize = 8192;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize) as any);
+        }
+        const base64Audio = btoa(binary);
+
+        this.sendLiveAudioChunk(base64Audio);
+      };
+
+      micSource.connect(processor);
+      processor.connect(micCtx.destination);
     } catch (err) {
-      console.warn('[VoiceAi] Speech synthesis notice:', err);
-      if (onComplete) onComplete();
-      else this.setStatus('LISTENING');
+      console.warn('[VoiceAi] Mic streaming initialization notice:', err);
+    }
+
+    // Also start continuous Web Speech recognition to stream live transcribed text
+    this.startContinuousSpeechRecognition();
+  }
+
+  /**
+   * Continuous Speech Recognition for real-time text injection into Live session
+   */
+  private startContinuousSpeechRecognition(): void {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const SpeechRecognition =
+        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        try {
+          if (this.speechRecognizer) {
+            this.speechRecognizer.abort();
+          }
+          const rec = new SpeechRecognition();
+          rec.continuous = true;
+          rec.interimResults = true;
+          rec.lang = 'en-US';
+
+          rec.onresult = (event: any) => {
+            const results = event.results;
+            const currentResult = results[results.length - 1];
+            const transcript = currentResult[0].transcript.trim();
+
+            if (transcript) {
+              this.emitTranscript(transcript);
+
+              // If user speaks, trigger immediate audio interruption
+              if (this.currentStatus === 'SPEAKING') {
+                this.stopAllAudioPlayback();
+              }
+
+              if (currentResult.isFinal) {
+                this.sendLiveTextInput(transcript);
+              }
+            }
+          };
+
+          rec.onerror = (e: any) => {
+            // Ignore no-speech errors to stay listening continuously
+            if (e.error !== 'no-speech' && e.error !== 'aborted') {
+              console.warn('[VoiceAi] Speech recognition event:', e.error);
+            }
+          };
+
+          rec.onend = () => {
+            // Restart automatically if session is still active
+            if (this.currentStatus !== 'IDLE' && this.currentStatus !== 'COMPLETED') {
+              try {
+                rec.start();
+              } catch (e) {}
+            }
+          };
+
+          this.speechRecognizer = rec;
+          rec.start();
+        } catch (e) {
+          console.warn('[VoiceAi] Web Speech API start notice:', e);
+        }
+      }
     }
   }
 
   /**
-   * Stop speaking immediately (user interrupt)
+   * Sends audio chunk to active live session
    */
-  public async stopSpeaking(): Promise<void> {
-    try {
-      await Speech.stop();
-    } catch (e) {
-      // Ignore
+  private sendLiveAudioChunk(base64Pcm: string): void {
+    const payload = {
+      audio: {
+        data: base64Pcm,
+        mimeType: 'audio/pcm;rate=16000',
+      },
+    };
+
+    if (this.wsConnection && this.wsConnection.readyState === WebSocket.OPEN) {
+      this.wsConnection.send(
+        JSON.stringify({
+          type: 'realtimeInput',
+          data: payload,
+        })
+      );
+    } else if (this.directLiveSession) {
+      try {
+        this.directLiveSession.sendRealtimeInput(payload);
+      } catch (e) {}
     }
   }
 
   /**
-   * Starts the initial assistant greeting on tap
+   * Sends real-time text input into the Live session
    */
-  public async startSession(onAutonomousNavigation: (place: Place, route: RouteOption) => void): Promise<void> {
-    this.history = [];
+  public sendLiveTextInput(text: string): void {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    this.stopAllAudioPlayback();
+    this.setStatus('THINKING');
+    this.emitTranscript(trimmed);
+
+    const payload = { text: trimmed };
+
+    if (this.wsConnection && this.wsConnection.readyState === WebSocket.OPEN) {
+      this.wsConnection.send(
+        JSON.stringify({
+          type: 'realtimeInput',
+          data: payload,
+        })
+      );
+    } else if (this.directLiveSession) {
+      try {
+        this.directLiveSession.sendRealtimeInput(payload);
+      } catch (e) {}
+    }
+  }
+
+  /**
+   * START PERSISTENT LIVE SESSION
+   */
+  public async startSession(
+    onAutonomousNavigation: (place: Place, route: RouteOption) => void
+  ): Promise<void> {
+    this.taskGeneration++;
+    this.onAutonomousNavigationCb = onAutonomousNavigation;
+
     this.taskState = {
       destination: null,
       destinationCoordinates: null,
@@ -195,7 +439,7 @@ class VoiceAiService {
     };
     this.updateTaskState({});
 
-    // 1. Check microphone permission
+    // 1. Verify Microphone Permission
     const perm = await this.ensureMicrophonePermission();
     if (!perm.granted) {
       this.setStatus('ERROR');
@@ -203,172 +447,115 @@ class VoiceAiService {
       return;
     }
 
-    // 2. Speak the REQUIRED starting greeting:
+    this.setStatus('LISTENING');
+
+    // 2. Connect to Live API over WebSocket
+    const connected = await this.connectLiveSession();
+    if (!connected) {
+      console.warn('[VoiceAi] Falling back to direct Gemini Live connection');
+      await this.connectDirectGeminiLive();
+    }
+
+    // 3. Start persistent microphone stream
+    await this.startContinuousMicrophone();
+
+    // 4. Trigger the REQUIRED starting greeting:
     // "Hello and welcome to SpecFinder, an autonomous AI integrated service."
-    const greeting = 'Hello and welcome to SpecFinder, an autonomous AI integrated service.';
-    const followUp = "Tell me where you'd like to go or what you'd like me to find along your journey.";
+    this.sendLiveTextInput('Start session and greet the user.');
+  }
 
-    this.history.push({ role: 'assistant', content: `${greeting} ${followUp}` });
+  /**
+   * Connect via Backend WebSocket proxy
+   */
+  private async connectLiveSession(): Promise<boolean> {
+    return new Promise((resolve) => {
+      try {
+        const baseUrl = getApiBaseUrl();
+        const wsUrl = baseUrl.replace(/^http/, 'ws') + '/api/ai/live-stream';
 
-    await this.speak(`${greeting} ${followUp}`, () => {
-      this.startListening(onAutonomousNavigation);
+        const ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          console.log('✅ Connected to Gemini Live WebSocket proxy at', wsUrl);
+          this.wsConnection = ws;
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data.toString());
+
+            if (message.type === 'ready') {
+              resolve(true);
+            } else if (message.type === 'gemini') {
+              this.handleGeminiLiveEvent(message.data);
+            } else if (message.type === 'error') {
+              console.warn('[VoiceAi] Server live error:', message.message);
+            }
+          } catch (e) {
+            console.error('[VoiceAi] Parse error:', e);
+          }
+        };
+
+        ws.onerror = (e) => {
+          console.warn('[VoiceAi] WebSocket connection failed:', e);
+          resolve(false);
+        };
+
+        ws.onclose = () => {
+          console.log('[VoiceAi] WebSocket live stream closed');
+        };
+
+        setTimeout(() => resolve(Boolean(this.wsConnection)), 3500);
+      } catch (err) {
+        resolve(false);
+      }
     });
   }
 
   /**
-   * Starts listening for user speech via Web Speech API or voice capture
+   * Direct Gemini Live API WebSocket connection via @google/genai SDK
    */
-  public startListening(onAutonomousNavigation: (place: Place, route: RouteOption) => void): void {
-    if (this.currentStatus === 'SPEAKING' || this.currentStatus === 'EXECUTING') {
-      return;
-    }
-    this.setStatus('LISTENING');
-
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      const SpeechRecognition =
-        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        try {
-          if (this.webSpeechRecognition) {
-            this.webSpeechRecognition.abort();
-          }
-          const recognition = new SpeechRecognition();
-          recognition.continuous = false;
-          recognition.interimResults = true;
-          recognition.lang = 'en-US';
-
-          recognition.onresult = (event: any) => {
-            const transcript = Array.from(event.results)
-              .map((res: any) => res[0].transcript)
-              .join('');
-            this.emitTranscript(transcript);
-
-            if (event.results[0]?.isFinal) {
-              this.webSpeechRecognition = null;
-              this.handleUserUtterance(transcript, onAutonomousNavigation);
-            }
-          };
-
-          recognition.onerror = (event: any) => {
-            console.warn('[VoiceAi] Speech recognition event:', event?.error);
-          };
-
-          this.webSpeechRecognition = recognition;
-          recognition.start();
-          return;
-        } catch (e) {
-          console.warn('[VoiceAi] Web Speech API initialization notice:', e);
-        }
-      }
-    }
-  }
-
-  /**
-   * Stop active listening
-   */
-  public stopListening(): void {
-    if (this.webSpeechRecognition) {
-      try {
-        this.webSpeechRecognition.stop();
-      } catch (e) {}
-      this.webSpeechRecognition = null;
-    }
-  }
-
-  /**
-   * Main turn processing with Gemini AI, function calling, and autonomous execution
-   */
-  public async handleUserUtterance(
-    userText: string,
-    onAutonomousNavigation: (place: Place, route: RouteOption) => void
-  ): Promise<void> {
-    const query = userText.trim();
-    if (!query) return;
-
-    this.stopListening();
-    this.stopSpeaking();
-    this.setStatus('THINKING');
-    this.emitTranscript(query);
-    this.history.push({ role: 'user', content: query });
-
-    const userCoords = locationService.getCoordinates();
-    const heading = APP_CONFIG.defaultLocation.heading || 45;
-
-    try {
-      // 1. Call backend voice-turn endpoint
-      const baseUrl = getApiBaseUrl();
-      const response = await fetch(`${baseUrl}/api/ai/voice-turn`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: query,
-          history: this.history,
-          currentLocation: userCoords,
-          userHeading: heading,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
-      }
-
-      const data = await response.json();
-      const functionCalls: Array<{ name: string; args: any }> = data.functionCalls || [];
-      const aiText: string = data.text || '';
-
-      // 2. Handle function calls
-      if (functionCalls.length > 0) {
-        await this.executeFunctionCalls(functionCalls, query, onAutonomousNavigation);
-      } else if (aiText) {
-        // 3. Spoken conversational follow-up (e.g. asking clarifying question)
-        this.history.push({ role: 'assistant', content: aiText });
-        await this.speak(aiText, () => {
-          this.startListening(onAutonomousNavigation);
-        });
-      } else {
-        const fallback = 'I heard you. Where would you like to navigate?';
-        this.history.push({ role: 'assistant', content: fallback });
-        await this.speak(fallback, () => {
-          this.startListening(onAutonomousNavigation);
-        });
-      }
-    } catch (err: any) {
-      console.warn('[VoiceAi] Backend turn error, attempting direct SDK fallback:', err?.message);
-      await this.handleDirectGeminiFallback(query, userCoords, onAutonomousNavigation);
-    }
-  }
-
-  /**
-   * Direct Gemini SDK fallback if backend is momentarily unreachable
-   */
-  private async handleDirectGeminiFallback(
-    query: string,
-    userCoords: Coordinates,
-    onAutonomousNavigation: (place: Place, route: RouteOption) => void
-  ): Promise<void> {
+  private async connectDirectGeminiLive(): Promise<void> {
     try {
       const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new Error('No Gemini API key available');
-      }
+      if (!apiKey) return;
 
       const ai = new GoogleGenAI({ apiKey });
-      const systemInstruction = `You are SpecFinder Voice AI. Current coords: (${userCoords.latitude}, ${userCoords.longitude}).
-Keep spoken answers concise (1-2 sentences).
-If user specifies destination or place on the way, resolve it and navigate.
-If request is ambiguous like "I need food", ask whether nearby or along their journey.`;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash-lite',
-        contents: query,
+      const session = await ai.live.connect({
+        model: 'gemini-3.1-flash-live-preview',
         config: {
-          systemInstruction,
+          responseModalities: ['AUDIO' as any],
+          systemInstruction: {
+            parts: [
+              {
+                text: `You are "SpecFinder AI", an autonomous voice AI navigation assistant for SpecFinder.
+Your starting greeting must begin with: "Hello and welcome to SpecFinder, an autonomous AI integrated service." followed by naturally asking: "Tell me where you'd like to go or what you'd like me to find along your journey."
+Keep spoken replies concise, natural (1-2 sentences), and direct.
+When user mentions a destination or says "take me to [X]", call resolve_destination.
+When user asks for a stop along the way (e.g. "Find a petrol station on the way"), call find_places.
+If the user changes their mind (e.g. "Actually take me to Kondapur instead"), call resolve_destination with the new destination.
+When the destination is confirmed, say "Starting navigation now." and call start_navigation.`,
+              },
+            ],
+          },
           tools: [
             {
               functionDeclarations: [
                 {
                   name: 'resolve_destination',
-                  description: 'Resolve destination name to location and calculate route',
+                  description: 'Resolve destination name to location coordinates',
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      destinationName: { type: Type.STRING, description: 'Destination name' },
+                    },
+                    required: ['destinationName'],
+                  },
+                },
+                {
+                  name: 'calculate_route',
+                  description: 'Calculate driving route to destination',
                   parameters: {
                     type: Type.OBJECT,
                     properties: {
@@ -383,192 +570,274 @@ If request is ambiguous like "I need food", ask whether nearby or along their jo
                   parameters: {
                     type: Type.OBJECT,
                     properties: {
-                      category: { type: Type.STRING, description: 'Place category' },
+                      category: { type: Type.STRING, description: 'Category name' },
                       destinationName: { type: Type.STRING, description: 'Destination name' },
                     },
                     required: ['category'],
+                  },
+                },
+                {
+                  name: 'start_navigation',
+                  description: 'Launch autonomous navigation',
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      destinationName: { type: Type.STRING, description: 'Destination name' },
+                    },
+                    required: ['destinationName'],
                   },
                 },
               ],
             },
           ],
         },
+        callbacks: {
+          onopen: () => console.log('Direct Gemini Live connected'),
+          onmessage: (msg: any) => this.handleGeminiLiveEvent(msg),
+          onerror: (err: any) => console.warn('Direct Live error:', err?.message),
+          onclose: () => console.log('Direct Live closed'),
+        },
       });
 
-      const functionCalls: any = response.functionCalls || [];
-      const aiText = response.text || '';
-
-      if (functionCalls.length > 0) {
-        await this.executeFunctionCalls(functionCalls, query, onAutonomousNavigation);
-      } else if (aiText) {
-        this.history.push({ role: 'assistant', content: aiText });
-        await this.speak(aiText, () => {
-          this.startListening(onAutonomousNavigation);
-        });
-      } else {
-        await this.speak("I'm finding your route now.", () => {
-          this.executeDestinationResolution(query, onAutonomousNavigation);
-        });
-      }
-    } catch (fallbackErr: any) {
-      console.error('[VoiceAi] Direct SDK fallback error:', fallbackErr);
-      this.setStatus('ERROR');
-      await this.speak('Voice assistant is temporarily unavailable. Please try again.');
+      this.directLiveSession = session;
+    } catch (e: any) {
+      console.warn('[VoiceAi] Direct Live connect notice:', e?.message);
     }
   }
 
   /**
-   * Executes Gemini function calls with existing SpecFinder services
+   * Handle incoming Gemini Live server events
    */
-  private async executeFunctionCalls(
-    calls: Array<{ name: string; args: any }>,
-    originalQuery: string,
-    onAutonomousNavigation: (place: Place, route: RouteOption) => void
-  ): Promise<void> {
+  private async handleGeminiLiveEvent(msg: any): Promise<void> {
+    // 1. Check for interruption / barge-in signal
+    if (msg.serverContent?.interrupted) {
+      console.log('⚡ Gemini Live Interruption received — stopping audio playback immediately');
+      this.stopAllAudioPlayback();
+      return;
+    }
+
+    // 2. Handle Tool Call from Gemini Live
+    if (msg.toolCall?.functionCalls) {
+      for (const call of msg.toolCall.functionCalls) {
+        await this.handleToolCall(call);
+      }
+      return;
+    }
+
+    // 3. Process Content Parts (PCM Audio + Transcription)
+    if (msg.serverContent) {
+      const sc = msg.serverContent;
+
+      if (sc.modelTurn?.parts) {
+        for (const part of sc.modelTurn.parts) {
+          if (part.inlineData?.data) {
+            this.playPcmChunk(part.inlineData.data);
+          }
+        }
+      }
+
+      if (sc.outputTranscription?.text) {
+        this.emitTranscript(sc.outputTranscription.text);
+      }
+
+      if (sc.inputTranscription?.text) {
+        this.emitTranscript(sc.inputTranscription.text);
+      }
+
+      if (sc.turnComplete) {
+        if (this.activeBufferSources.length === 0) {
+          this.setStatus('LISTENING');
+        }
+      }
+    }
+  }
+
+  /**
+   * Executes function call from Gemini Live and sends response back
+   */
+  private async handleToolCall(call: { id: string; name: string; args: any }): Promise<void> {
+    const currentGen = ++this.taskGeneration;
     this.setStatus('EXECUTING');
 
-    let targetDestinationName = '';
-    let targetCategory = '';
+    let toolOutput: any = { success: true };
+    const userCoords = locationService.getCoordinates();
 
-    for (const call of calls) {
-      if (call.name === 'resolve_destination' || call.name === 'calculate_route' || call.name === 'start_navigation') {
-        if (call.args?.destinationName) {
-          targetDestinationName = call.args.destinationName;
-        }
-      }
-      if (call.name === 'find_places') {
-        if (call.args?.category) {
-          targetCategory = call.args.category;
-        }
-        if (call.args?.destinationName && !targetDestinationName) {
-          targetDestinationName = call.args.destinationName;
-        }
-      }
-    }
-
-    if (!targetDestinationName) {
-      targetDestinationName = originalQuery.replace(/^(i want to go to|take me to|navigate to|go to)\s+/i, '').trim();
-    }
-
-    await this.executeDestinationResolution(
-      targetDestinationName,
-      onAutonomousNavigation,
-      targetCategory
-    );
-  }
-
-  /**
-   * Resolves destination, calculates route, finds en-route places, and launches autonomous navigation
-   */
-  public async executeDestinationResolution(
-    destinationName: string,
-    onAutonomousNavigation: (place: Place, route: RouteOption) => void,
-    categoryWaypoint?: string
-  ): Promise<void> {
     try {
-      this.setStatus('EXECUTING');
-      this.emitTranscript(`Resolving route to ${destinationName}...`);
+      if (call.name === 'resolve_destination' || call.name === 'calculate_route' || call.name === 'start_navigation') {
+        const destName = call.args?.destinationName || 'Gachibowli';
+        this.emitTranscript(`Resolving ${destName}...`);
 
-      const userCoords = locationService.getCoordinates();
+        const places = await placesService.searchPlaces(destName, undefined, userCoords);
+        const targetPlace: Place =
+          places.length > 0
+            ? places[0]
+            : {
+                id: `voice-dest-${Date.now()}`,
+                name: destName,
+                category: 'Shopping',
+                rating: 4.8,
+                reviewCount: 220,
+                distance: 3800,
+                travelTime: 11,
+                status: 'OPEN',
+                hours: 'Open 24 Hours',
+                coordinates: APP_CONFIG.defaultDestination,
+                direction: 'AHEAD',
+                routeDeviation: 0,
+                address: `${destName}, Hyderabad`,
+                description: `Target destination: ${destName}`,
+                phone: '+91 40 2345 6789',
+                services: ['Parking'],
+              };
 
-      // 1. Resolve destination via existing placesService
-      const matchingPlaces = await placesService.searchPlaces(destinationName, undefined, userCoords);
-      let targetPlace: Place | null = matchingPlaces.length > 0 ? matchingPlaces[0] : null;
+        const routes = await directionsService.getRouteOptions(userCoords, targetPlace.coordinates);
+        const chosenRoute: RouteOption =
+          routes.length > 0
+            ? routes[0]
+            : {
+                id: `voice-route-${Date.now()}`,
+                type: 'FASTEST',
+                title: `Fastest to ${targetPlace.name}`,
+                subtitle: 'Optimal corridor',
+                estimatedMinutes: 11,
+                distanceKm: 3.8,
+                trafficLevel: 'LOW',
+                highlights: ['Fastest path'],
+                stopsCount: 0,
+              };
 
-      if (!targetPlace) {
-        targetPlace = {
-          id: `voice-dest-${Date.now()}`,
-          name: destinationName,
-          category: 'Shopping',
-          rating: 4.8,
-          reviewCount: 350,
-          distance: 4200,
-          travelTime: 12,
-          status: 'OPEN',
-          hours: 'Open 24 Hours',
-          coordinates: APP_CONFIG.defaultDestination,
-          direction: 'AHEAD',
-          routeDeviation: 0,
-          address: `${destinationName}, Hyderabad`,
-          description: `Autonomous voice destination: ${destinationName}`,
-          phone: '+91 40 2345 6789',
-          services: ['Parking', 'Accessible Entrance'],
+        // If user changed their mind while a previous task was running, verify generation!
+        if (currentGen !== this.taskGeneration) {
+          return;
+        }
+
+        this.updateTaskState({
+          destination: targetPlace.name,
+          destinationCoordinates: targetPlace.coordinates,
+          resolvedPlace: targetPlace,
+          calculatedRoute: chosenRoute,
+          taskComplete: true,
+        });
+
+        toolOutput = {
+          success: true,
+          destination: targetPlace.name,
+          distanceKm: chosenRoute.distanceKm,
+          estimatedMinutes: chosenRoute.estimatedMinutes,
+        };
+
+        // If navigation completion is requested or destination confirmed
+        if (call.name === 'start_navigation' || this.onAutonomousNavigationCb) {
+          setTimeout(() => {
+            if (this.onAutonomousNavigationCb && currentGen === this.taskGeneration) {
+              this.onAutonomousNavigationCb(targetPlace, chosenRoute);
+            }
+          }, 1800);
+        }
+      } else if (call.name === 'find_places') {
+        const category = call.args?.category || 'petrol';
+        this.emitTranscript(`Finding ${category} along route...`);
+
+        const places = await placesService.searchPlaces(category, undefined, userCoords);
+        const waypoint = places.length > 0 ? places[0] : null;
+
+        if (currentGen !== this.taskGeneration) return;
+
+        this.updateTaskState({ waypointPlace: waypoint, requestedCategory: category });
+        toolOutput = {
+          success: true,
+          found: Boolean(waypoint),
+          placeName: waypoint?.name || `${category} station`,
         };
       }
+    } catch (e: any) {
+      toolOutput = { success: false, error: e.message };
+    }
 
-      this.updateTaskState({
-        destination: targetPlace.name,
-        destinationCoordinates: targetPlace.coordinates,
-        resolvedPlace: targetPlace,
-      });
+    // Send tool response back to Gemini Live
+    const toolResponsePayload = {
+      functionResponses: [
+        {
+          id: call.id,
+          name: call.name,
+          response: { output: toolOutput },
+        },
+      ],
+    };
 
-      // 2. Calculate route via existing directionsService
-      const routes = await directionsService.getRouteOptions(userCoords, targetPlace.coordinates);
-      const chosenRoute: RouteOption =
-        routes.length > 0
-          ? routes[0]
-          : {
-              id: `voice-route-${Date.now()}`,
-              type: 'FASTEST',
-              title: `Fastest to ${targetPlace.name}`,
-              subtitle: 'Optimal corridor via expressway',
-              estimatedMinutes: Math.round((targetPlace.travelTime || 10)),
-              distanceKm: parseFloat(((targetPlace.distance || 3500) / 1000).toFixed(1)),
-              trafficLevel: 'LOW',
-              highlights: ['Fastest corridor', 'Minimal delays'],
-              stopsCount: 0,
-            };
-
-      // 3. If category requested along route (e.g. petrol pump or pharmacy), find it
-      let waypointPlace: Place | null = null;
-      if (categoryWaypoint) {
-        const stops = await placesService.getRouteRecommendations(
-          targetPlace,
-          chosenRoute,
-          45,
-          38,
-          'ALL',
-          userCoords
-        );
-        const catLower = categoryWaypoint.toLowerCase();
-        waypointPlace =
-          stops.find((s) => s.category.toLowerCase().includes(catLower) || s.name.toLowerCase().includes(catLower)) ||
-          (stops.length > 0 ? stops[0] : null);
-      }
-
-      this.updateTaskState({
-        calculatedRoute: chosenRoute,
-        waypointPlace,
-        taskComplete: true,
-      });
-
-      // 4. Speak autonomous confirmation
-      let spokenMessage = `Your route to ${targetPlace.name} is ready. Starting navigation.`;
-      if (waypointPlace) {
-        spokenMessage = `I've found ${waypointPlace.name} along your route to ${targetPlace.name}. Starting navigation now.`;
-      }
-
-      this.setStatus('COMPLETED');
-      this.emitTranscript(spokenMessage);
-
-      await this.speak(spokenMessage, () => {
-        setTimeout(() => {
-          onAutonomousNavigation(targetPlace!, chosenRoute);
-        }, 350);
-      });
-    } catch (err: any) {
-      console.error('[VoiceAi] Execution error:', err);
-      this.setStatus('ERROR');
-      await this.speak("I couldn't resolve the route. Please try again.");
+    if (this.wsConnection && this.wsConnection.readyState === WebSocket.OPEN) {
+      this.wsConnection.send(
+        JSON.stringify({
+          type: 'toolResponse',
+          data: toolResponsePayload,
+        })
+      );
+    } else if (this.directLiveSession) {
+      try {
+        this.directLiveSession.sendToolResponse(toolResponsePayload);
+      } catch (e) {}
     }
   }
 
+  public stopSpeaking(): void {
+    this.stopAllAudioPlayback();
+  }
+
+  public stopListening(): void {
+    this.stopAllAudioPlayback();
+  }
+
+  public startListening(_navCb?: any): void {
+    this.stopAllAudioPlayback();
+    this.setStatus('LISTENING');
+  }
+
+  public handleUserUtterance(text: string, _navCb?: any): void {
+    this.sendLiveTextInput(text);
+  }
+
   /**
-   * Reset session
+   * Reset and close session
    */
   public resetSession(): void {
-    this.stopListening();
-    this.stopSpeaking();
+    this.taskGeneration++;
+    this.stopAllAudioPlayback();
+
+    if (this.micStream) {
+      try {
+        this.micStream.getTracks().forEach((t: any) => t.stop());
+      } catch (e) {}
+      this.micStream = null;
+    }
+
+    if (this.micProcessor) {
+      try {
+        this.micProcessor.disconnect();
+      } catch (e) {}
+      this.micProcessor = null;
+    }
+
+    if (this.speechRecognizer) {
+      try {
+        this.speechRecognizer.abort();
+      } catch (e) {}
+      this.speechRecognizer = null;
+    }
+
+    if (this.wsConnection) {
+      try {
+        this.wsConnection.close();
+      } catch (e) {}
+      this.wsConnection = null;
+    }
+
+    if (this.directLiveSession) {
+      try {
+        this.directLiveSession.close();
+      } catch (e) {}
+      this.directLiveSession = null;
+    }
+
     this.setStatus('IDLE');
     this.emitTranscript('');
   }
