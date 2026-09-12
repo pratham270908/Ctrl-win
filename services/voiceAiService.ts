@@ -11,11 +11,11 @@ import { GoogleGenAI, Type } from '@google/genai';
 export type VoiceAiStatus =
   | 'IDLE'
   | 'CONNECTING'
+  | 'GREETING'
   | 'LISTENING'
-  | 'THINKING'
-  | 'SPEAKING'
-  | 'EXECUTING'
-  | 'COMPLETED'
+  | 'PROCESSING'
+  | 'CONFIRMING'
+  | 'NAVIGATING'
   | 'ERROR';
 
 export interface VoiceConversationExchange {
@@ -72,13 +72,15 @@ class VoiceAiService {
   // External audio player / bridge
   private audioBridge: AudioBridgeController | null = null;
 
-  // Browser Audio Context for Web runtime
+  // Web runtime audio handlers
   private webAudioContext: any = null;
   private webMicStream: any = null;
   private webMicProcessor: any = null;
   private webActiveSources: any[] = [];
   private webNextPlayTime: number = 0;
   private webSpeechRecognizer: any = null;
+  private webHasSpoken: boolean = false;
+  private webLastSpeechTime: number = 0;
 
   // Callbacks
   private onAutonomousNavigationCb: ((place: Place, route: RouteOption) => void) | null = null;
@@ -86,7 +88,7 @@ class VoiceAiService {
   // Generation counter to cancel stale tasks
   private taskGeneration: number = 0;
 
-  // Keep-alive heartbeat
+  // Heartbeat timer
   private heartbeatTimer: any = null;
 
   public getStatus(): VoiceAiStatus {
@@ -177,7 +179,7 @@ class VoiceAiService {
       const req = await requestRecordingPermissionsAsync();
       return {
         granted: req.granted,
-        error: req.granted ? undefined : 'Microphone permission denied. Please allow microphone access in settings.',
+        error: req.granted ? undefined : 'Microphone permission denied.',
       };
     } catch (e: any) {
       console.warn('[VoiceAi] Mic permission check warning:', e?.message);
@@ -186,21 +188,19 @@ class VoiceAiService {
   }
 
   /**
-   * Immediately stops all active audio playback and clears queued audio buffers (Interruption / Barge-in)
+   * Immediately stops all active audio playback and clears queued audio buffers
    */
   public stopAllAudioPlayback(): void {
     try {
       Speech.stop();
     } catch (e) {}
 
-    // Tell AudioBridge to stop playback immediately
     if (this.audioBridge) {
       try {
         this.audioBridge.stopPlayback();
       } catch (e) {}
     }
 
-    // Web runtime playback cleanup
     if (this.webActiveSources.length > 0) {
       this.webActiveSources.forEach((source) => {
         try {
@@ -211,10 +211,6 @@ class VoiceAiService {
       this.webActiveSources = [];
     }
     this.webNextPlayTime = 0;
-
-    if (this.currentStatus === 'SPEAKING') {
-      this.setStatus('LISTENING');
-    }
   }
 
   /**
@@ -225,10 +221,6 @@ class VoiceAiService {
       this.audioBridge.playPcmChunk(base64Pcm);
     } else if (Platform.OS === 'web') {
       this.playWebPcmChunk(base64Pcm);
-    }
-
-    if (this.currentStatus !== 'SPEAKING' && this.currentStatus !== 'EXECUTING') {
-      this.setStatus('SPEAKING');
     }
   }
 
@@ -273,8 +265,8 @@ class VoiceAiService {
       source.onended = () => {
         const idx = this.webActiveSources.indexOf(source);
         if (idx !== -1) this.webActiveSources.splice(idx, 1);
-        if (this.webActiveSources.length === 0 && this.currentStatus === 'SPEAKING') {
-          this.setStatus('LISTENING');
+        if (this.webActiveSources.length === 0) {
+          this.handleAiSpeechEnded();
         }
       };
     } catch (e) {
@@ -283,42 +275,85 @@ class VoiceAiService {
   }
 
   /**
-   * Receives microphone audio chunk from AudioBridge or native recorder
+   * Receives streaming microphone audio chunk from AudioBridge
    */
-  public handleMicrophoneChunk(base64Pcm: string, rms?: number): void {
-    // If RMS energy indicates user speech while AI is speaking -> Instant client-side Barge-In!
-    if (rms !== undefined && rms > 0.04 && this.currentStatus === 'SPEAKING') {
-      console.log('⚡ User speech energy detected during AI playback -> Instant Barge-In triggered');
-      this.stopAllAudioPlayback();
+  public handleMicrophoneChunk(base64Pcm: string, _rms?: number): void {
+    // Only stream while in LISTENING state
+    if (this.currentStatus === 'LISTENING') {
+      this.sendLiveAudioChunk(base64Pcm);
     }
-
-    this.sendLiveAudioChunk(base64Pcm);
   }
 
   /**
-   * Receives user speech text from speech recognizer
+   * Receives interim user speech text from speech recognizer
    */
-  public handleUserSpeechDetected(text: string, isFinal?: boolean): void {
-    const trimmed = text.trim();
+  public handleUserSpeechInterim(text: string): void {
+    if (this.currentStatus === 'LISTENING') {
+      this.updateUserUtterance(text);
+    }
+  }
+
+  /**
+   * TRIGGERED WHEN VOICE ACTIVITY DETECTION DETECTS END OF SPEECH:
+   * 1. Stop microphone listening immediately
+   * 2. Lock the user utterance in display
+   * 3. Transition to PROCESSING
+   * 4. Submit command to Gemini
+   */
+  public handleEndOfUserSpeech(finalText: string): void {
+    const trimmed = (finalText || this.conversation.userUtterance).trim();
     if (!trimmed) return;
 
+    console.log(`🎤 End of user speech detected: "${trimmed}" -> Stopping microphone now.`);
+
+    // 1. Physically stop listening!
+    if (this.audioBridge) {
+      try {
+        this.audioBridge.stopRecording();
+      } catch (e) {}
+    }
+    if (this.webMicStream) {
+      try {
+        this.webMicStream.getTracks().forEach((t: any) => t.stop());
+      } catch (e) {}
+      this.webMicStream = null;
+    }
+    if (this.webSpeechRecognizer) {
+      try {
+        this.webSpeechRecognizer.abort();
+      } catch (e) {}
+    }
+
+    // 2. Lock user utterance in display
     this.updateUserUtterance(trimmed);
 
-    if (this.currentStatus === 'SPEAKING') {
-      this.stopAllAudioPlayback();
-    }
+    // 3. Transition to PROCESSING
+    this.setStatus('PROCESSING');
 
-    if (isFinal) {
-      this.sendLiveTextInput(trimmed);
-    }
+    // 4. Send finalized utterance to Gemini
+    this.sendLiveTextInput(trimmed);
   }
 
   /**
-   * Callback when AI audio playback completes naturally
+   * Called when AI finishes speaking its turn (Greeting or Confirmation)
    */
   public handleAiSpeechEnded(): void {
-    if (this.currentStatus === 'SPEAKING') {
+    console.log(`🔊 AI speech ended in state: ${this.currentStatus}`);
+
+    if (this.currentStatus === 'GREETING') {
+      // Greeting finished -> Enter LISTENING and begin capturing user's single utterance
       this.setStatus('LISTENING');
+      if (this.audioBridge) {
+        this.audioBridge.startRecording();
+      } else if (Platform.OS === 'web') {
+        this.startWebMicrophone();
+      }
+    } else if (this.currentStatus === 'CONFIRMING') {
+      // Confirmation finished -> Trigger automatic navigation immediately!
+      this.setStatus('NAVIGATING');
+      if (this.taskState.resolvedPlace && this.taskState.calculatedRoute && this.onAutonomousNavigationCb) {
+        this.onAutonomousNavigationCb(this.taskState.resolvedPlace, this.taskState.calculatedRoute);
+      }
     }
   }
 
@@ -354,10 +389,6 @@ class VoiceAiService {
     const trimmed = text.trim();
     if (!trimmed) return;
 
-    this.stopAllAudioPlayback();
-    this.setStatus('THINKING');
-    this.updateUserUtterance(trimmed);
-
     const payload = { text: trimmed };
 
     if (this.wsConnection && this.wsConnection.readyState === WebSocket.OPEN) {
@@ -375,7 +406,7 @@ class VoiceAiService {
   }
 
   /**
-   * START PERSISTENT LIVE SESSION
+   * START SINGLE-UTTERANCE VOICE SESSION
    */
   public async startSession(
     onAutonomousNavigation: (place: Place, route: RouteOption) => void
@@ -418,16 +449,6 @@ class VoiceAiService {
       console.warn('[VoiceAi] Falling back to direct Gemini Live connection');
       await this.connectDirectGeminiLive();
     }
-
-    // 3. Start audio bridge / microphone
-    if (this.audioBridge) {
-      this.audioBridge.startRecording();
-    } else if (Platform.OS === 'web') {
-      this.startWebMicrophone();
-    }
-
-    // 4. Initial status ready
-    this.setStatus('LISTENING');
   }
 
   /**
@@ -445,7 +466,6 @@ class VoiceAiService {
         ws.onopen = () => {
           console.log('✅ Connected to Gemini Live WebSocket proxy');
           this.wsConnection = ws;
-          this.setStatus('LISTENING');
 
           // Keep-alive ping every 15 seconds
           if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
@@ -461,7 +481,8 @@ class VoiceAiService {
             const message = JSON.parse(event.data.toString());
 
             if (message.type === 'ready') {
-              this.setStatus('LISTENING');
+              // Connected -> Expecting GREETING from AI
+              this.setStatus('GREETING');
               resolve(true);
             } else if (message.type === 'gemini') {
               this.handleGeminiLiveEvent(message.data);
@@ -496,7 +517,7 @@ class VoiceAiService {
   }
 
   /**
-   * Direct Gemini Live API WebSocket connection via @google/genai SDK (Fallback)
+   * Direct Gemini Live API WebSocket connection (Fallback)
    */
   private async connectDirectGeminiLive(): Promise<void> {
     try {
@@ -512,14 +533,13 @@ class VoiceAiService {
           systemInstruction: {
             parts: [
               {
-                text: `You are "SpecFinder AI", an autonomous real-time voice AI navigation assistant for SpecFinder.
-Your starting greeting must begin with: "Hello and welcome to SpecFinder, an autonomous AI integrated service." followed by naturally asking: "Where would you like to go?"
-Keep spoken replies concise, natural (1-2 sentences), and direct.
-When the user specifies a destination (e.g. "I want to go to Charminar", "Take me to Gachibowli"), confirm verbally (e.g. "Sure. I'll help you get to Gachibowli.") and call resolve_destination.
-When the user asks for stops or places along the way (e.g. "Find a petrol pump on the way"), understand that "on the way" refers to the active journey, confirm verbally (e.g. "Sure, I'll look for a petrol pump along your route."), and call find_places with the category and target destination.
-If the user's request is ambiguous without a destination (e.g. "I need food"), do NOT navigate immediately; ask naturally: "Would you like me to find food nearby or along your journey?"
-If the user changes their mind or interrupts (e.g. "Actually change destination to Kondapur" or "Wait, take me to Kondapur"), acknowledge verbally (e.g. "Sure, I'll change the destination to Kondapur.") and call resolve_destination with the new destination.
-When the destination is confirmed, say "Starting navigation now." and call start_navigation.`,
+                text: `You are "SpecFinder AI", an autonomous voice AI navigation assistant for SpecFinder.
+Your starting greeting must begin with: "Hello and welcome to SpecFinder, an autonomous AI integrated service." followed by asking: "Where would you like to go?"
+Keep spoken replies concise, natural (1 sentence), and direct.
+When the user specifies a destination (e.g. "I want to go to Gachibowli", "Take me to Charminar", "Navigate me to Secunderabad", "Let's go to the airport", "Get me to Hitech City"):
+Verbally confirm with: "I am navigating to <destination>." (or if a stop along the route was requested: "I am navigating to <destination> and I'll include a <stop> along your route.") and call resolve_destination.
+If the user's request is ambiguous without a destination (e.g. "I need food"), ask naturally: "Would you like me to find food nearby or along your journey?"
+When the destination is resolved, call start_navigation.`,
               },
             ],
           },
@@ -578,8 +598,7 @@ When the destination is confirmed, say "Starting navigation now." and call start
         callbacks: {
           onopen: () => {
             console.log('Direct Gemini Live connected');
-            this.setStatus('LISTENING');
-            // Trigger opening greeting
+            this.setStatus('GREETING');
             session.sendRealtimeInput({ text: 'Greet the user with the required welcome greeting now.' });
           },
           onmessage: (msg: any) => this.handleGeminiLiveEvent(msg),
@@ -598,14 +617,7 @@ When the destination is confirmed, say "Starting navigation now." and call start
    * Handle incoming Gemini Live events
    */
   private async handleGeminiLiveEvent(msg: any): Promise<void> {
-    // 1. Check for interruption / barge-in signal from Gemini Live VAD
-    if (msg.serverContent?.interrupted) {
-      console.log('⚡ Gemini Live Interruption received — stopping audio playback immediately');
-      this.stopAllAudioPlayback();
-      return;
-    }
-
-    // 2. Handle Tool Call from Gemini Live
+    // 1. Handle Tool Calls
     if (msg.toolCall?.functionCalls) {
       for (const call of msg.toolCall.functionCalls) {
         await this.handleToolCall(call);
@@ -613,7 +625,7 @@ When the destination is confirmed, say "Starting navigation now." and call start
       return;
     }
 
-    // 3. Process Content Parts (PCM Audio + Transcription)
+    // 2. Process Content Parts (PCM Audio + Transcription)
     if (msg.serverContent) {
       const sc = msg.serverContent;
 
@@ -627,23 +639,20 @@ When the destination is confirmed, say "Starting navigation now." and call start
 
       if (sc.outputTranscription?.text) {
         const text = sc.outputTranscription.text;
-        // Append or update AI utterance
-        this.updateAiUtterance(this.conversation.aiUtterance ? `${this.conversation.aiUtterance} ${text}`.trim() : text.trim());
-      }
-
-      if (sc.inputTranscription?.text) {
-        this.updateUserUtterance(sc.inputTranscription.text);
+        if (this.currentStatus === 'GREETING') {
+          this.updateAiUtterance(this.conversation.aiUtterance ? `${this.conversation.aiUtterance} ${text}`.trim() : text.trim());
+        } else if (this.currentStatus === 'PROCESSING' || this.currentStatus === 'CONFIRMING') {
+          this.updateAiUtterance(text.trim());
+        }
       }
 
       if (sc.turnComplete) {
-        // If not actively playing audio sources, return to LISTENING
-        if (this.currentStatus === 'THINKING' || this.currentStatus === 'SPEAKING') {
-          setTimeout(() => {
-            if (this.currentStatus === 'SPEAKING' || this.currentStatus === 'THINKING') {
-              this.setStatus('LISTENING');
-            }
-          }, 400);
-        }
+        // Ifturn completed while greeting or confirming, check end callback
+        setTimeout(() => {
+          if (this.currentStatus === 'GREETING') {
+            this.handleAiSpeechEnded();
+          }
+        }, 1200);
       }
     }
   }
@@ -653,8 +662,6 @@ When the destination is confirmed, say "Starting navigation now." and call start
    */
   private async handleToolCall(call: { id: string; name: string; args: any }): Promise<void> {
     const currentGen = ++this.taskGeneration;
-    this.setStatus('EXECUTING');
-
     let toolOutput: any = { success: true };
     const userCoords = locationService.getCoordinates();
 
@@ -665,8 +672,6 @@ When the destination is confirmed, say "Starting navigation now." and call start
         call.name === 'start_navigation'
       ) {
         const destName = call.args?.destinationName || 'Gachibowli';
-        this.updateAiUtterance(`Locating ${destName} and preparing the route...`);
-
         const places = await placesService.searchPlaces(destName, undefined, userCoords);
         const targetPlace: Place =
           places.length > 0
@@ -687,7 +692,7 @@ When the destination is confirmed, say "Starting navigation now." and call start
                 address: `${destName}, Hyderabad`,
                 description: `Target destination: ${destName}`,
                 phone: '+91 40 2345 6789',
-                services: ['Parking'],
+                services: ['Navigation'],
               };
 
         const routes = await directionsService.getRouteOptions(userCoords, targetPlace.coordinates);
@@ -716,25 +721,35 @@ When the destination is confirmed, say "Starting navigation now." and call start
           taskComplete: true,
         });
 
+        // Set status to CONFIRMING
+        this.setStatus('CONFIRMING');
+
+        // Required Confirmation format: "I am navigating to <destination>."
+        const confirmationMsg = this.taskState.waypointPlace
+          ? `I am navigating to ${targetPlace.name} and I'll include a ${this.taskState.requestedCategory || 'stop'} along your route.`
+          : `I am navigating to ${targetPlace.name}.`;
+
+        this.updateAiUtterance(confirmationMsg);
+
+        // Speak the required confirmation through speaker
+        try {
+          Speech.speak(confirmationMsg, {
+            language: 'en-US',
+            onDone: () => this.handleAiSpeechEnded(),
+            onError: () => this.handleAiSpeechEnded(),
+          });
+        } catch (e) {
+          setTimeout(() => this.handleAiSpeechEnded(), 1800);
+        }
+
         toolOutput = {
           success: true,
           destination: targetPlace.name,
           distanceKm: chosenRoute.distanceKm,
           estimatedMinutes: chosenRoute.estimatedMinutes,
         };
-
-        // If navigation trigger requested or destination is resolved:
-        // Automatically start navigation without asking redundant questions
-        setTimeout(() => {
-          if (this.onAutonomousNavigationCb && currentGen === this.taskGeneration) {
-            this.setStatus('COMPLETED');
-            this.onAutonomousNavigationCb(targetPlace, chosenRoute);
-          }
-        }, 1600);
       } else if (call.name === 'find_places') {
         const category = call.args?.category || 'petrol';
-        this.updateAiUtterance(`Finding ${category} along your route...`);
-
         const places = await placesService.searchPlaces(category, undefined, userCoords);
         const waypoint = places.length > 0 ? places[0] : null;
 
@@ -777,10 +792,13 @@ When the destination is confirmed, say "Starting navigation now." and call start
   }
 
   /**
-   * Browser microphone capture for Web runtime
+   * Browser microphone capture for Web runtime with energy-based silence detection
    */
   private async startWebMicrophone(): Promise<void> {
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) return;
+
+    this.webHasSpoken = false;
+    this.webLastSpeechTime = 0;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -801,6 +819,8 @@ When the destination is confirmed, say "Starting navigation now." and call start
       this.webMicProcessor = processor;
 
       processor.onaudioprocess = (e: any) => {
+        if (this.currentStatus !== 'LISTENING') return;
+
         const inputData = e.inputBuffer.getChannelData(0);
         let sumSquares = 0;
         const pcm16 = new Int16Array(inputData.length);
@@ -811,8 +831,14 @@ When the destination is confirmed, say "Starting navigation now." and call start
         }
 
         const rms = Math.sqrt(sumSquares / inputData.length);
-        if (rms > 0.04 && this.currentStatus === 'SPEAKING') {
-          this.stopAllAudioPlayback();
+
+        if (rms > 0.04) {
+          this.webHasSpoken = true;
+          this.webLastSpeechTime = Date.now();
+        } else if (this.webHasSpoken && Date.now() - this.webLastSpeechTime > 850) {
+          // User finished speaking!
+          this.handleEndOfUserSpeech(this.conversation.userUtterance);
+          return;
         }
 
         let binary = '';
@@ -849,7 +875,7 @@ When the destination is confirmed, say "Starting navigation now." and call start
         this.webSpeechRecognizer.abort();
       }
       const rec = new SpeechRecognition();
-      rec.continuous = true;
+      rec.continuous = false; // SINGLE UTTERANCE ONLY
       rec.interimResults = true;
       rec.lang = 'en-US';
 
@@ -859,29 +885,21 @@ When the destination is confirmed, say "Starting navigation now." and call start
         const transcript = currentResult[0].transcript.trim();
 
         if (transcript) {
-          this.updateUserUtterance(transcript);
-          if (this.currentStatus === 'SPEAKING') {
-            this.stopAllAudioPlayback();
-          }
+          this.handleUserSpeechInterim(transcript);
+
           if (currentResult.isFinal) {
-            this.sendLiveTextInput(transcript);
+            this.handleEndOfUserSpeech(transcript);
           }
         }
       };
 
-      rec.onerror = (e: any) => {
-        if (e.error !== 'no-speech' && e.error !== 'aborted') {
-          console.warn('[VoiceAi] Web speech error:', e.error);
+      rec.onspeechend = () => {
+        if (this.currentStatus === 'LISTENING') {
+          this.handleEndOfUserSpeech(this.conversation.userUtterance);
         }
       };
 
-      rec.onend = () => {
-        if (this.currentStatus !== 'IDLE' && this.currentStatus !== 'COMPLETED') {
-          try {
-            rec.start();
-          } catch (e) {}
-        }
-      };
+      rec.onerror = (_e: any) => {};
 
       this.webSpeechRecognizer = rec;
       rec.start();
@@ -896,11 +914,6 @@ When the destination is confirmed, say "Starting navigation now." and call start
 
   public stopListening(): void {
     this.stopAllAudioPlayback();
-  }
-
-  public startListening(_navCb?: any): void {
-    this.stopAllAudioPlayback();
-    this.setStatus('LISTENING');
   }
 
   /**

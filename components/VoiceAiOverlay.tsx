@@ -42,8 +42,11 @@ const AUDIO_BRIDGE_HTML = `
     let micProcessor = null;
     let activeSources = [];
     let nextPlayTime = 0;
-    let isAiSpeaking = false;
     let speechRecognizer = null;
+    let hasSpoken = false;
+    let lastSpeechTime = 0;
+    let currentInterimTranscript = '';
+    let isListeningActive = false;
 
     function getAudioContext() {
       if (!audioCtx) {
@@ -87,13 +90,11 @@ const AUDIO_BRIDGE_HTML = `
         source.start(startTime);
         nextPlayTime = startTime + audioBuffer.duration;
         activeSources.push(source);
-        isAiSpeaking = true;
 
         source.onended = function() {
           const idx = activeSources.indexOf(source);
           if (idx !== -1) activeSources.splice(idx, 1);
           if (activeSources.length === 0) {
-            isAiSpeaking = false;
             if (window.ReactNativeWebView) {
               window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'ai_speech_ended' }));
             }
@@ -104,31 +105,24 @@ const AUDIO_BRIDGE_HTML = `
       }
     };
 
-    // Instant Barge-In / Interruption: immediately stop all playing audio
+    // Stop all audio playback immediately
     window.stopAllPlayback = function() {
       activeSources.forEach(function(s) {
         try { s.stop(); s.disconnect(); } catch (e) {}
       });
       activeSources = [];
       nextPlayTime = 0;
-      isAiSpeaking = false;
-      if (window.ReactNativeWebView) {
-        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'playback_stopped' }));
-      }
     };
 
-    // Continuous 16kHz microphone capture
+    // Begin single-utterance microphone capture
     window.startRecording = async function() {
       getAudioContext();
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify({
-            type: 'mic_error',
-            message: 'getUserMedia not available'
-          }));
-        }
-        return;
-      }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+
+      hasSpoken = false;
+      lastSpeechTime = 0;
+      currentInterimTranscript = '';
+      isListeningActive = true;
 
       try {
         micStream = await navigator.mediaDevices.getUserMedia({
@@ -148,6 +142,8 @@ const AUDIO_BRIDGE_HTML = `
         micProcessor = processor;
 
         processor.onaudioprocess = function(e) {
+          if (!isListeningActive) return;
+
           const inputData = e.inputBuffer.getChannelData(0);
           let sumSquares = 0;
           const pcm16 = new Int16Array(inputData.length);
@@ -158,12 +154,14 @@ const AUDIO_BRIDGE_HTML = `
           }
           const rms = Math.sqrt(sumSquares / inputData.length);
 
-          // Instant Client-Side Barge-in
-          if (rms > 0.045 && isAiSpeaking) {
-            window.stopAllPlayback();
-            if (window.ReactNativeWebView) {
-              window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'barge_in' }));
-            }
+          // Energy-based Voice Activity Detection
+          if (rms > 0.04) {
+            hasSpoken = true;
+            lastSpeechTime = Date.now();
+          } else if (hasSpoken && Date.now() - lastSpeechTime > 850) {
+            // END OF SPEECH DETECTED VIA VAD -> STOP IMMEDIATELY
+            finalizeUtterance(currentInterimTranscript);
+            return;
           }
 
           // Convert Int16 PCM to Base64
@@ -186,24 +184,30 @@ const AUDIO_BRIDGE_HTML = `
 
         source.connect(processor);
         processor.connect(micCtx.destination);
-
-        if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'mic_started' }));
-        }
       } catch (err) {
-        if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify({
-            type: 'mic_error',
-            message: err.message || String(err)
-          }));
-        }
+        console.warn('Mic init error:', err);
       }
 
-      // Also start continuous Web Speech recognition
-      startSpeechRecognition();
+      startSingleSpeechRecognition();
     };
 
+    // End single utterance immediately & stop listening
+    function finalizeUtterance(transcript) {
+      if (!isListeningActive) return;
+      isListeningActive = false;
+
+      window.stopRecording();
+
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'end_of_speech',
+          text: transcript || currentInterimTranscript
+        }));
+      }
+    }
+
     window.stopRecording = function() {
+      isListeningActive = false;
       if (micStream) {
         micStream.getTracks().forEach(function(t) { t.stop(); });
         micStream = null;
@@ -218,7 +222,7 @@ const AUDIO_BRIDGE_HTML = `
       }
     };
 
-    function startSpeechRecognition() {
+    function startSingleSpeechRecognition() {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SpeechRecognition) return;
 
@@ -227,43 +231,48 @@ const AUDIO_BRIDGE_HTML = `
           speechRecognizer.abort();
         }
         const rec = new SpeechRecognition();
-        rec.continuous = true;
+        rec.continuous = false; // SINGLE UTTERANCE ONLY
         rec.interimResults = true;
         rec.lang = 'en-US';
 
         rec.onresult = function(event) {
+          if (!isListeningActive) return;
+
           const results = event.results;
           const currentResult = results[results.length - 1];
           const transcript = currentResult[0].transcript.trim();
 
           if (transcript) {
-            if (isAiSpeaking) {
-              window.stopAllPlayback();
-            }
+            hasSpoken = true;
+            lastSpeechTime = Date.now();
+            currentInterimTranscript = transcript;
+
             if (window.ReactNativeWebView) {
               window.ReactNativeWebView.postMessage(JSON.stringify({
-                type: 'user_speech',
-                text: transcript,
-                isFinal: currentResult.isFinal
+                type: 'user_speech_interim',
+                text: transcript
               }));
+            }
+
+            if (currentResult.isFinal) {
+              finalizeUtterance(transcript);
             }
           }
         };
 
-        rec.onerror = function(e) {
-          // ignore common background no-speech events
+        rec.onspeechend = function() {
+          if (isListeningActive) {
+            finalizeUtterance(currentInterimTranscript);
+          }
         };
 
-        rec.onend = function() {
-          try { rec.start(); } catch (e) {}
-        };
+        rec.onerror = function() {};
 
         speechRecognizer = rec;
         rec.start();
       } catch (e) {}
     }
 
-    // Notify React Native that Audio Bridge is ready
     if (window.ReactNativeWebView) {
       window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'bridge_ready' }));
     }
@@ -353,14 +362,12 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
     try {
       const msg = JSON.parse(event.nativeEvent.data);
 
-      if (msg.type === 'bridge_ready') {
-        webViewRef.current?.injectJavaScript(`window.startRecording(); true;`);
-      } else if (msg.type === 'mic_pcm') {
+      if (msg.type === 'mic_pcm') {
         voiceAiService.handleMicrophoneChunk(msg.data, msg.rms);
-      } else if (msg.type === 'user_speech') {
-        voiceAiService.handleUserSpeechDetected(msg.text, msg.isFinal);
-      } else if (msg.type === 'barge_in') {
-        voiceAiService.stopAllAudioPlayback();
+      } else if (msg.type === 'user_speech_interim') {
+        voiceAiService.handleUserSpeechInterim(msg.text);
+      } else if (msg.type === 'end_of_speech') {
+        voiceAiService.handleEndOfUserSpeech(msg.text);
       } else if (msg.type === 'ai_speech_ended') {
         voiceAiService.handleAiSpeechEnded();
       }
@@ -369,11 +376,11 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
     }
   };
 
-  // Pulse animations based on real status
+  // Pulse & orb animations based on actual Voice State
   useEffect(() => {
     let loopAnim: Animated.CompositeAnimation | null = null;
 
-    if (status === 'LISTENING' || status === 'SPEAKING' || status === 'EXECUTING') {
+    if (status === 'LISTENING' || status === 'GREETING' || status === 'CONFIRMING') {
       loopAnim = Animated.loop(
         Animated.parallel([
           Animated.sequence([
@@ -421,11 +428,11 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
         ])
       );
       loopAnim.start();
-    } else if (status === 'THINKING' || status === 'CONNECTING') {
+    } else if (status === 'PROCESSING' || status === 'CONNECTING') {
       loopAnim = Animated.loop(
         Animated.timing(spinAnim, {
           toValue: 1,
-          duration: 1800,
+          duration: 1600,
           easing: Easing.linear,
           useNativeDriver: true,
         })
@@ -444,9 +451,9 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
   }, [status]);
 
   const handleOrbPress = () => {
-    if (status === 'SPEAKING') {
-      // User tapped orb to interrupt AI
+    if (status === 'GREETING' || status === 'CONFIRMING') {
       voiceAiService.stopAllAudioPlayback();
+      voiceAiService.handleAiSpeechEnded();
     } else if (status === 'IDLE' || status === 'ERROR') {
       voiceAiService.startSession(onAutonomousNavigation);
     }
@@ -456,16 +463,16 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
     switch (status) {
       case 'CONNECTING':
         return { label: 'CONNECTING...', color: '#F59E0B', bg: 'rgba(245, 158, 11, 0.18)' };
+      case 'GREETING':
+        return { label: 'GREETING...', color: '#06B6D4', bg: 'rgba(6, 182, 212, 0.18)' };
       case 'LISTENING':
-        return { label: 'LISTENING...', color: '#06B6D4', bg: 'rgba(6, 182, 212, 0.18)' };
-      case 'THINKING':
-        return { label: 'THINKING...', color: '#A855F7', bg: 'rgba(168, 85, 247, 0.18)' };
-      case 'SPEAKING':
-        return { label: 'SPEAKING...', color: '#10B981', bg: 'rgba(16, 185, 129, 0.18)' };
-      case 'EXECUTING':
-        return { label: 'ROUTING AUTONOMOUSLY...', color: '#3B82F6', bg: 'rgba(59, 130, 246, 0.18)' };
-      case 'COMPLETED':
-        return { label: 'STARTING NAVIGATION...', color: '#10B981', bg: 'rgba(16, 185, 129, 0.25)' };
+        return { label: 'LISTENING...', color: '#38BDF8', bg: 'rgba(56, 189, 248, 0.22)' };
+      case 'PROCESSING':
+        return { label: 'PROCESSING COMMAND...', color: '#A855F7', bg: 'rgba(168, 85, 247, 0.22)' };
+      case 'CONFIRMING':
+        return { label: 'CONFIRMING...', color: '#10B981', bg: 'rgba(16, 185, 129, 0.22)' };
+      case 'NAVIGATING':
+        return { label: 'STARTING NAVIGATION...', color: '#10B981', bg: 'rgba(16, 185, 129, 0.3)' };
       case 'ERROR':
         return { label: 'ERROR', color: '#EF4444', bg: 'rgba(239, 68, 68, 0.18)' };
       default:
@@ -545,13 +552,13 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
               onPress={handleOrbPress}
               activeOpacity={0.85}
             >
-              {status === 'THINKING' || status === 'CONNECTING' ? (
+              {status === 'PROCESSING' || status === 'CONNECTING' ? (
                 <Animated.View style={{ transform: [{ rotate: spinInterpolate }] }}>
                   <Ionicons name="sync" size={42} color="#38BDF8" />
                 </Animated.View>
-              ) : status === 'SPEAKING' ? (
+              ) : status === 'GREETING' || status === 'CONFIRMING' ? (
                 <Ionicons name="volume-high" size={42} color="#38BDF8" />
-              ) : status === 'EXECUTING' || status === 'COMPLETED' ? (
+              ) : status === 'NAVIGATING' ? (
                 <Ionicons name="navigate" size={42} color="#10B981" />
               ) : (
                 <Ionicons name="sparkles" size={42} color="#38BDF8" />
@@ -559,29 +566,39 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
             </TouchableOpacity>
           </View>
 
-          {/* One-On-One Conversational Caption Area */}
-          <View style={styles.captionContainer}>
-            {/* AI Turn */}
-            <View style={styles.captionRow}>
-              <View style={[styles.speakerBadge, { backgroundColor: 'rgba(6, 182, 212, 0.2)' }]}>
-                <Text style={[styles.speakerBadgeText, { color: '#38BDF8' }]}>AI</Text>
-              </View>
-              <Text style={styles.captionAiText} numberOfLines={3}>
-                {conversation.aiUtterance || (status === 'LISTENING' ? 'Where would you like to go?' : 'Connecting...')}
-              </Text>
-            </View>
-
-            {/* USER Turn */}
+          {/* Explicit Turn-Based Display Boxes */}
+          <View style={styles.dialogueBoxContainer}>
+            {/* YOU CARD: Shown when user speaks or after utterance completes */}
             {conversation.userUtterance ? (
-              <View style={[styles.captionRow, { marginTop: 12 }]}>
-                <View style={[styles.speakerBadge, { backgroundColor: 'rgba(16, 185, 129, 0.2)' }]}>
-                  <Text style={[styles.speakerBadgeText, { color: '#34D399' }]}>YOU</Text>
+              <View style={styles.userUtteranceCard}>
+                <View style={styles.cardHeaderRow}>
+                  <View style={styles.userBadge}>
+                    <Text style={styles.userBadgeText}>YOU</Text>
+                  </View>
+                  {status === 'LISTENING' && (
+                    <View style={styles.micActiveIndicator}>
+                      <View style={styles.micDot} />
+                      <Text style={styles.micListeningText}>Listening</Text>
+                    </View>
+                  )}
                 </View>
-                <Text style={styles.captionUserText} numberOfLines={2}>
+                <Text style={styles.userSpeechText}>
                   "{conversation.userUtterance}"
                 </Text>
               </View>
             ) : null}
+
+            {/* SPECFINDER AI CARD: Greeting, Prompt, or Confirmation */}
+            <View style={styles.aiUtteranceCard}>
+              <View style={styles.cardHeaderRow}>
+                <View style={styles.aiBadge}>
+                  <Text style={styles.aiBadgeText}>SPECFINDER AI</Text>
+                </View>
+              </View>
+              <Text style={styles.aiSpeechText}>
+                {conversation.aiUtterance || (status === 'LISTENING' ? 'Where would you like to go?' : 'Initializing...')}
+              </Text>
+            </View>
           </View>
 
           {/* Destination Target Card (If Resolved) */}
@@ -611,12 +628,14 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
 
           {/* Bottom Interaction Hint */}
           <Text style={styles.bottomHint}>
-            {status === 'SPEAKING'
-              ? 'Speak anytime to interrupt • Tap orb to stop'
-              : status === 'LISTENING'
-              ? 'Speak naturally • Listening continuously'
-              : status === 'CONNECTING'
-              ? 'Initializing SpecFinder Live session...'
+            {status === 'LISTENING'
+              ? 'Speak one command • Stops automatically when you finish'
+              : status === 'PROCESSING'
+              ? 'Processing destination...'
+              : status === 'CONFIRMING'
+              ? 'Confirming route...'
+              : status === 'NAVIGATING'
+              ? 'Launching navigation...'
               : 'SpecFinder Autonomous Voice Assistant'}
           </Text>
 
@@ -712,7 +731,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 20,
     borderWidth: 1,
-    marginBottom: 20,
+    marginBottom: 18,
   },
   statusDot: {
     width: 8,
@@ -725,41 +744,41 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
   },
   orbContainer: {
-    width: 170,
-    height: 170,
+    width: 160,
+    height: 160,
     justifyContent: 'center',
     alignItems: 'center',
-    marginVertical: 10,
+    marginVertical: 8,
   },
   pulseWave: {
     position: 'absolute',
     borderRadius: 100,
   },
   pulseWave1: {
-    width: 120,
-    height: 120,
+    width: 115,
+    height: 115,
     backgroundColor: 'rgba(6, 182, 212, 0.15)',
     borderWidth: 1.5,
     borderColor: 'rgba(6, 182, 212, 0.35)',
   },
   pulseWave2: {
-    width: 140,
-    height: 140,
+    width: 135,
+    height: 135,
     backgroundColor: 'rgba(56, 189, 248, 0.1)',
     borderWidth: 1,
     borderColor: 'rgba(56, 189, 248, 0.25)',
   },
   pulseWave3: {
-    width: 165,
-    height: 165,
+    width: 155,
+    height: 155,
     backgroundColor: 'rgba(14, 165, 233, 0.06)',
     borderWidth: 1,
     borderColor: 'rgba(14, 165, 233, 0.18)',
   },
   orbCore: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
     backgroundColor: '#0369A1',
     justifyContent: 'center',
     alignItems: 'center',
@@ -771,52 +790,92 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     elevation: 10,
   },
-  captionContainer: {
+  dialogueBoxContainer: {
     width: '100%',
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
-    borderRadius: 18,
-    padding: 16,
-    marginVertical: 16,
+    marginVertical: 14,
+    gap: 10,
+  },
+  userUtteranceCard: {
+    width: '100%',
+    backgroundColor: 'rgba(30, 41, 59, 0.90)',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+  },
+  aiUtteranceCard: {
+    width: '100%',
+    backgroundColor: 'rgba(15, 23, 42, 0.90)',
+    borderRadius: 16,
+    padding: 14,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
   },
-  captionRow: {
+  cardHeaderRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
   },
-  speakerBadge: {
+  userBadge: {
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 6,
-    marginTop: 2,
   },
-  speakerBadgeText: {
-    fontSize: 10,
+  userBadgeText: {
+    fontSize: 10.5,
     fontWeight: '800',
+    color: '#34D399',
     letterSpacing: 0.5,
   },
-  captionAiText: {
-    flex: 1,
-    color: '#E2E8F0',
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '500',
+  micActiveIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
-  captionUserText: {
-    flex: 1,
+  micDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#38BDF8',
+  },
+  micListeningText: {
+    fontSize: 10.5,
     color: '#38BDF8',
-    fontSize: 14,
-    lineHeight: 20,
+    fontWeight: '700',
+  },
+  aiBadge: {
+    backgroundColor: 'rgba(6, 182, 212, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  aiBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#38BDF8',
+    letterSpacing: 0.5,
+  },
+  userSpeechText: {
+    color: '#38BDF8',
+    fontSize: 15,
+    lineHeight: 21,
     fontWeight: '600',
     fontStyle: 'italic',
+  },
+  aiSpeechText: {
+    color: '#F1F5F9',
+    fontSize: 14.5,
+    lineHeight: 21,
+    fontWeight: '500',
   },
   destinationCard: {
     width: '100%',
     backgroundColor: 'rgba(30, 41, 59, 0.85)',
     borderRadius: 16,
     padding: 14,
-    marginBottom: 14,
+    marginBottom: 12,
     borderLeftWidth: 4,
     borderLeftColor: COLORS.accentCyan,
   },
