@@ -110,10 +110,16 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
   }, [recorder]);
 
   // Begin physical microphone capture after greeting completes
-  const beginListening = useCallback(() => {
+  const beginListening = useCallback(async () => {
     if (isListeningRef.current || !isComponentActiveRef.current) return;
 
     try {
+      console.log('[SpecFinder AI] Starting native microphone');
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+      });
+      await recorder.prepareToRecordAsync();
       recorder.record();
       isListeningRef.current = true;
       console.log('[SpecFinder AI] Native microphone started');

@@ -840,8 +840,9 @@ app.post('/api/ai/transcribe', async (req, res) => {
     let mimeType = req.body.mimeType || (req.body.pcmBase64 ? 'audio/pcm;rate=16000' : 'audio/mp4');
     if (mimeType === 'audio/m4a') mimeType = 'audio/mp4';
 
-    if (!audioData) {
-      return res.status(400).json({ error: 'No audio provided' });
+    if (!audioData || audioData.length < 64) {
+      console.log('[SpecFinder AI] Received empty or minimal audio payload, returning empty transcript.');
+      return res.json({ success: true, transcript: '' });
     }
 
     if (!ai) {
@@ -874,8 +875,8 @@ app.post('/api/ai/transcribe', async (req, res) => {
     console.log(`[SpecFinder AI] Spoken command recognized: "${transcript}"`);
     res.json({ success: true, transcript });
   } catch (err) {
-    console.error('[Transcribe Error]:', err?.message || err);
-    res.status(500).json({ error: 'Transcription failed: ' + (err?.message || 'unknown error') });
+    console.warn('[Transcribe Notice]:', err?.message || err);
+    res.json({ success: true, transcript: '', errorNotice: err?.message || 'Transcription notice' });
   }
 });
 

@@ -1,6 +1,8 @@
 import * as Speech from 'expo-speech';
 import { Platform, PermissionsAndroid } from 'react-native';
 import { getRecordingPermissionsAsync, requestRecordingPermissionsAsync } from 'expo-audio';
+import { File } from 'expo-file-system';
+import * as FileSystemLegacy from 'expo-file-system/legacy';
 import { Place, RouteOption, Coordinates } from '../types';
 import { placesService } from './placesService';
 import { directionsService } from './directionsService';
@@ -162,8 +164,20 @@ class VoiceAiService {
     console.log('[SpecFinder AI] Checking microphone permission');
     try {
       if (Platform.OS === 'android') {
-        const hasPerm = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
-        if (hasPerm) {
+        const check = await getRecordingPermissionsAsync().catch(() => null);
+        if (check && check.granted) {
+          console.log('[SpecFinder AI] Microphone permission: GRANTED');
+          return { granted: true, canAskAgain: true };
+        }
+
+        const hasAndroidPerm = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO).catch(() => false);
+        if (hasAndroidPerm) {
+          console.log('[SpecFinder AI] Microphone permission: GRANTED');
+          return { granted: true, canAskAgain: true };
+        }
+
+        const req = await requestRecordingPermissionsAsync().catch(() => null);
+        if (req && req.granted) {
           console.log('[SpecFinder AI] Microphone permission: GRANTED');
           return { granted: true, canAskAgain: true };
         }
@@ -173,17 +187,17 @@ class VoiceAiService {
           {
             title: 'Microphone Permission',
             message: 'SpecFinder needs access to your microphone for voice commands.',
-            buttonPositive: 'Grant Permission',
+            buttonPositive: 'Allow',
             buttonNegative: 'Deny',
           }
-        );
+        ).catch(() => null);
 
         if (res === PermissionsAndroid.RESULTS.GRANTED) {
           console.log('[SpecFinder AI] Microphone permission: GRANTED');
           return { granted: true, canAskAgain: true };
         } else {
           console.log('[SpecFinder AI] Microphone permission: DENIED');
-          const isPermanent = res === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN;
+          const isPermanent = res === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN || (req && !req.canAskAgain);
           return {
             granted: false,
             canAskAgain: !isPermanent,
@@ -1239,25 +1253,34 @@ export const voiceAiService = new VoiceAiService();
 
 /**
  * Reads a local file URI (e.g. from expo-audio) and converts it to a clean Base64 string
+ * using native filesystem APIs directly, without calling fetch() or response.blob().
  */
 export async function uriToBase64(fileUri: string): Promise<string> {
   try {
-    const response = await fetch(fileUri);
-    const blob = await response.blob();
-    return new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result as string;
-        if (!result) {
-          reject(new Error('FileReader produced empty result'));
-          return;
-        }
-        const base64 = result.includes(',') ? result.split(',')[1] : result;
-        resolve(base64);
-      };
-      reader.onerror = (e) => reject(new Error('FileReader failed to read blob: ' + e));
-      reader.readAsDataURL(blob);
-    });
+    // 1. Primary: expo-file-system File API
+    try {
+      const file = new File(fileUri);
+      if (typeof file.base64 === 'function') {
+        const b64 = await file.base64();
+        if (b64 && b64.length > 0) return b64;
+      }
+    } catch (e) {
+      // Fallback below
+    }
+
+    // 2. Fallback: expo-file-system legacy readAsStringAsync
+    try {
+      if (FileSystemLegacy && typeof FileSystemLegacy.readAsStringAsync === 'function') {
+        const b64 = await FileSystemLegacy.readAsStringAsync(fileUri, {
+          encoding: FileSystemLegacy.EncodingType.Base64,
+        });
+        if (b64 && b64.length > 0) return b64;
+      }
+    } catch (e) {
+      // Fallback below
+    }
+
+    throw new Error('Unable to read audio file into Base64 from: ' + fileUri);
   } catch (err: any) {
     console.warn('[SpecFinder AI] Failed to convert URI to Base64:', err?.message || err);
     throw err;
