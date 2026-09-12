@@ -359,6 +359,7 @@ class VoiceAiService {
   public async transcribeAudioFile(audioBase64: string, mimeType: string = 'audio/mp4'): Promise<string> {
     try {
       const baseUrl = getApiBaseUrl();
+      console.log('[VoiceAi] Audio chunk sent');
       console.log(`[SpecFinder AI] Transcribing captured native audio (${audioBase64.length} chars, mimeType: ${mimeType}) via ${baseUrl}/api/ai/transcribe...`);
       const res = await fetch(`${baseUrl}/api/ai/transcribe`, {
         method: 'POST',
@@ -635,6 +636,7 @@ class VoiceAiService {
    * Sends 16kHz PCM audio chunk to active live session
    */
   public sendLiveAudioChunk(base64Pcm: string): void {
+    console.log('[VoiceAi] Audio chunk sent');
     const payload = {
       audio: {
         data: base64Pcm,
@@ -709,6 +711,9 @@ class VoiceAiService {
 
     this.setStatus('CONNECTING');
 
+    const hasKey = Boolean(process.env.EXPO_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY);
+    console.log('[VoiceAi] Gemini key configured:', hasKey ? 'YES' : 'NO');
+
     // 1. Verify Microphone Permission
     const perm = await this.ensureMicrophonePermission();
     if (!perm.granted) {
@@ -718,9 +723,12 @@ class VoiceAiService {
     }
 
     // 2. Connect to Live API over WebSocket
+    console.log('[VoiceAi] Connection mode: BACKEND');
+    console.log('[VoiceAi] Live session connecting...');
     const connected = await this.connectLiveSession();
     if (!connected) {
       console.warn('[VoiceAi] Falling back to direct Gemini Live connection');
+      console.log('[VoiceAi] Connection mode: DIRECT');
       await this.connectDirectGeminiLive();
     }
   }
@@ -738,6 +746,7 @@ class VoiceAiService {
         const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
+          console.log('[VoiceAi] Live session connected');
           console.log('✅ Connected to Gemini Live WebSocket proxy');
           this.wsConnection = ws;
 
@@ -761,22 +770,24 @@ class VoiceAiService {
             } else if (message.type === 'gemini') {
               this.handleGeminiLiveEvent(message.data);
             } else if (message.type === 'error') {
+              console.warn('[VoiceAi] Gemini connection error:', message.message);
               console.warn('[VoiceAi] Server live error:', message.message);
               this.setStatus('ERROR');
               this.updateAiUtterance(`Connection error: ${message.message}`);
             }
-          } catch (e) {
-            console.error('[VoiceAi] Parse error:', e);
+          } catch (e: any) {
+            console.error('[VoiceAi] Parse error:', e?.message || e);
           }
         };
 
-        ws.onerror = (e) => {
-          console.warn('[VoiceAi] WebSocket connection failed:', e);
+        ws.onerror = (e: any) => {
+          console.warn('[VoiceAi] Gemini connection error:', e?.message || 'WebSocket error');
+          console.warn('[VoiceAi] WebSocket connection failed:', e?.message || e);
           resolve(false);
         };
 
-        ws.onclose = () => {
-          console.log('[VoiceAi] WebSocket live stream closed');
+        ws.onclose = (ev: any) => {
+          console.log('[VoiceAi] WebSocket live stream closed', ev?.code, ev?.reason);
           if (this.heartbeatTimer) {
             clearInterval(this.heartbeatTimer);
             this.heartbeatTimer = null;
@@ -784,7 +795,8 @@ class VoiceAiService {
         };
 
         setTimeout(() => resolve(Boolean(this.wsConnection)), 4000);
-      } catch (err) {
+      } catch (err: any) {
+        console.warn('[VoiceAi] Gemini connection error:', err?.message || err);
         resolve(false);
       }
     });
@@ -796,8 +808,12 @@ class VoiceAiService {
   private async connectDirectGeminiLive(): Promise<void> {
     try {
       const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-      if (!apiKey) return;
+      if (!apiKey) {
+        console.warn('[VoiceAi] Gemini connection error: No API key found for direct connection');
+        return;
+      }
 
+      console.log('[VoiceAi] Live session connecting...');
       const ai = new GoogleGenAI({ apiKey });
 
       const session = await ai.live.connect({
@@ -871,18 +887,23 @@ When the destination is resolved, call start_navigation.`,
         },
         callbacks: {
           onopen: () => {
+            console.log('[VoiceAi] Live session connected');
             console.log('Direct Gemini Live connected');
             this.setStatus('GREETING');
             session.sendRealtimeInput({ text: 'Greet the user with the required welcome greeting now.' });
           },
           onmessage: (msg: any) => this.handleGeminiLiveEvent(msg),
-          onerror: (err: any) => console.warn('Direct Live error:', err?.message),
+          onerror: (err: any) => {
+            console.warn('[VoiceAi] Gemini connection error:', err?.message || 'Direct Live error');
+            console.warn('Direct Live error:', err?.message);
+          },
           onclose: () => console.log('Direct Live closed'),
         },
       });
 
       this.directLiveSession = session;
     } catch (e: any) {
+      console.warn('[VoiceAi] Gemini connection error:', e?.message || 'Direct Live connect notice');
       console.warn('[VoiceAi] Direct Live connect notice:', e?.message);
     }
   }
@@ -906,6 +927,7 @@ When the destination is resolved, call start_navigation.`,
       if (sc.modelTurn?.parts) {
         for (const part of sc.modelTurn.parts) {
           if (part.inlineData?.data) {
+            console.log('[VoiceAi] Gemini audio received');
             this.playPcmChunk(part.inlineData.data);
           }
         }

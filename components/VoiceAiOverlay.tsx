@@ -202,6 +202,7 @@ export const VoiceAiOverlay: React.FC<VoiceAiOverlayProps> = ({
       recorder.record();
       isRecordingRef.current = true;
       console.log('[SpecFinder AI] Recording started');
+      console.log('[VoiceAi] Microphone started');
 
       // Step 3: ONLY show LISTENING after physical native microphone has started!
       voiceAiService.setStatus('LISTENING');

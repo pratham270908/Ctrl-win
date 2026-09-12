@@ -903,10 +903,14 @@ export const wss = new WebSocketServer({ server, path: '/api/ai/live-stream' });
 
 wss.on('connection', async (ws) => {
   console.log('⚡ Client connected to Gemini Live WebSocket stream');
+  console.log('[VoiceAi] Gemini key configured:', Boolean(apiKey) ? 'YES' : 'NO');
+  console.log('[VoiceAi] Connection mode: BACKEND');
+  console.log('[VoiceAi] Live session connecting...');
   let liveSession = null;
 
   try {
     if (!ai || !apiKey) {
+      console.error('[VoiceAi] Gemini connection error: Gemini AI not configured');
       ws.send(JSON.stringify({ type: 'error', message: 'Gemini AI not configured' }));
       ws.close();
       return;
@@ -971,13 +975,18 @@ When the destination is resolved, call start_navigation.`
       callbacks: {
         onopen: () => {
           console.log('[Gemini Live] Underlying WebSocket opened');
+          console.log('[VoiceAi] Live session connected');
         },
         onmessage: (msg) => {
+          if (msg?.serverContent?.modelTurn?.parts) {
+            console.log('[VoiceAi] Gemini audio received');
+          }
           if (ws.readyState === ws.OPEN) {
             ws.send(JSON.stringify({ type: 'gemini', data: msg }));
           }
         },
         onerror: (err) => {
+          console.error('[VoiceAi] Gemini connection error:', err?.message || 'Live session error');
           console.error('[Gemini Live Error]:', err?.message);
           if (ws.readyState === ws.OPEN) {
             ws.send(JSON.stringify({ type: 'error', message: err?.message || 'Live session error' }));
@@ -1004,6 +1013,7 @@ When the destination is resolved, call start_navigation.`
       try {
         const parsed = JSON.parse(data.toString());
         if (parsed.type === 'realtimeInput' && liveSession) {
+          console.log('[VoiceAi] Audio chunk sent');
           liveSession.sendRealtimeInput(parsed.data);
         } else if (parsed.type === 'toolResponse' && liveSession) {
           liveSession.sendToolResponse(parsed.data);
@@ -1020,6 +1030,7 @@ When the destination is resolved, call start_navigation.`
       }
     });
   } catch (e) {
+    console.error('[VoiceAi] Gemini connection error:', e?.message || 'Live WebSocket Connection Error');
     console.error('[Live WebSocket Connection Error]:', e);
     if (ws.readyState === ws.OPEN) {
       ws.send(JSON.stringify({ type: 'error', message: e.message }));
