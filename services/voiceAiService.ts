@@ -10,13 +10,18 @@ import { GoogleGenAI, Type } from '@google/genai';
 
 export type VoiceAiStatus =
   | 'IDLE'
-  | 'READY'
+  | 'CONNECTING'
   | 'LISTENING'
   | 'THINKING'
   | 'SPEAKING'
   | 'EXECUTING'
   | 'COMPLETED'
   | 'ERROR';
+
+export interface VoiceConversationExchange {
+  aiUtterance: string;
+  userUtterance: string;
+}
 
 export interface VoiceTaskState {
   destination: string | null;
@@ -30,11 +35,23 @@ export interface VoiceTaskState {
   waypointPlace: Place | null;
 }
 
+export interface AudioBridgeController {
+  playPcmChunk: (base64Pcm: string) => void;
+  stopPlayback: () => void;
+  startRecording: () => void;
+  stopRecording: () => void;
+}
+
 class VoiceAiService {
   private currentStatus: VoiceAiStatus = 'IDLE';
   private statusListeners: Array<(status: VoiceAiStatus) => void> = [];
-  private transcriptListeners: Array<(text: string) => void> = [];
+  private conversationListeners: Array<(exchange: VoiceConversationExchange) => void> = [];
   private taskStateListeners: Array<(state: VoiceTaskState) => void> = [];
+
+  private conversation: VoiceConversationExchange = {
+    aiUtterance: '',
+    userUtterance: '',
+  };
 
   private taskState: VoiceTaskState = {
     destination: null,
@@ -52,25 +69,32 @@ class VoiceAiService {
   private wsConnection: WebSocket | null = null;
   private directLiveSession: any = null;
 
-  // Web Audio Context for mic streaming & PCM playback
-  private audioContext: any = null;
-  private micStream: any = null;
-  private micProcessor: any = null;
-  private audioPlaybackQueue: any[] = [];
-  private activeBufferSources: any[] = [];
-  private nextPlayTime: number = 0;
+  // External audio player / bridge
+  private audioBridge: AudioBridgeController | null = null;
 
-  // Continuous speech recognition
-  private speechRecognizer: any = null;
+  // Browser Audio Context for Web runtime
+  private webAudioContext: any = null;
+  private webMicStream: any = null;
+  private webMicProcessor: any = null;
+  private webActiveSources: any[] = [];
+  private webNextPlayTime: number = 0;
+  private webSpeechRecognizer: any = null;
 
   // Callbacks
   private onAutonomousNavigationCb: ((place: Place, route: RouteOption) => void) | null = null;
 
-  // Generation counter to cancel superseded/stale tasks
+  // Generation counter to cancel stale tasks
   private taskGeneration: number = 0;
+
+  // Keep-alive heartbeat
+  private heartbeatTimer: any = null;
 
   public getStatus(): VoiceAiStatus {
     return this.currentStatus;
+  }
+
+  public getConversation(): VoiceConversationExchange {
+    return { ...this.conversation };
   }
 
   public getTaskState(): VoiceTaskState {
@@ -85,10 +109,11 @@ class VoiceAiService {
     };
   }
 
-  public subscribeTranscript(listener: (text: string) => void): () => void {
-    this.transcriptListeners.push(listener);
+  public subscribeConversation(listener: (exchange: VoiceConversationExchange) => void): () => void {
+    this.conversationListeners.push(listener);
+    listener(this.conversation);
     return () => {
-      this.transcriptListeners = this.transcriptListeners.filter((l) => l !== listener);
+      this.conversationListeners = this.conversationListeners.filter((l) => l !== listener);
     };
   }
 
@@ -100,18 +125,32 @@ class VoiceAiService {
     };
   }
 
-  private setStatus(status: VoiceAiStatus) {
+  public setStatus(status: VoiceAiStatus) {
+    if (this.currentStatus === status) return;
     this.currentStatus = status;
     this.statusListeners.forEach((fn) => fn(status));
   }
 
-  private emitTranscript(text: string) {
-    this.transcriptListeners.forEach((fn) => fn(text));
+  public updateAiUtterance(text: string) {
+    this.conversation = { ...this.conversation, aiUtterance: text };
+    this.conversationListeners.forEach((fn) => fn(this.conversation));
   }
 
-  private updateTaskState(partial: Partial<VoiceTaskState>) {
+  public updateUserUtterance(text: string) {
+    this.conversation = { ...this.conversation, userUtterance: text };
+    this.conversationListeners.forEach((fn) => fn(this.conversation));
+  }
+
+  public updateTaskState(partial: Partial<VoiceTaskState>) {
     this.taskState = { ...this.taskState, ...partial };
     this.taskStateListeners.forEach((fn) => fn(this.taskState));
+  }
+
+  /**
+   * Register the Audio Bridge (WebView or Native player)
+   */
+  public registerAudioBridge(bridge: AudioBridgeController | null): void {
+    this.audioBridge = bridge;
   }
 
   /**
@@ -138,28 +177,12 @@ class VoiceAiService {
       const req = await requestRecordingPermissionsAsync();
       return {
         granted: req.granted,
-        error: req.granted ? undefined : 'Microphone permission was denied by device.',
+        error: req.granted ? undefined : 'Microphone permission denied. Please allow microphone access in settings.',
       };
     } catch (e: any) {
       console.warn('[VoiceAi] Mic permission check warning:', e?.message);
       return { granted: true };
     }
-  }
-
-  /**
-   * Initialize Web Audio Context for real-time PCM audio playback
-   */
-  private getAudioContext(): any {
-    if (typeof window !== 'undefined') {
-      const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
-      if (AudioCtx && !this.audioContext) {
-        this.audioContext = new AudioCtx({ sampleRate: 24000 });
-      }
-      if (this.audioContext && this.audioContext.state === 'suspended') {
-        this.audioContext.resume().catch(() => {});
-      }
-    }
-    return this.audioContext;
   }
 
   /**
@@ -170,17 +193,24 @@ class VoiceAiService {
       Speech.stop();
     } catch (e) {}
 
-    if (this.activeBufferSources.length > 0) {
-      this.activeBufferSources.forEach((source) => {
+    // Tell AudioBridge to stop playback immediately
+    if (this.audioBridge) {
+      try {
+        this.audioBridge.stopPlayback();
+      } catch (e) {}
+    }
+
+    // Web runtime playback cleanup
+    if (this.webActiveSources.length > 0) {
+      this.webActiveSources.forEach((source) => {
         try {
           source.stop();
           source.disconnect();
         } catch (e) {}
       });
-      this.activeBufferSources = [];
+      this.webActiveSources = [];
     }
-    this.audioPlaybackQueue = [];
-    this.nextPlayTime = 0;
+    this.webNextPlayTime = 0;
 
     if (this.currentStatus === 'SPEAKING') {
       this.setStatus('LISTENING');
@@ -188,187 +218,114 @@ class VoiceAiService {
   }
 
   /**
-   * Enqueues and plays a 24kHz Base64 PCM audio chunk from Gemini Live
+   * Plays a 24kHz Base64 PCM audio chunk from Gemini Live
    */
-  private playPcmChunk(base64Pcm: string): void {
-    const ctx = this.getAudioContext();
-    if (!ctx) return;
+  public playPcmChunk(base64Pcm: string): void {
+    if (this.audioBridge) {
+      this.audioBridge.playPcmChunk(base64Pcm);
+    } else if (Platform.OS === 'web') {
+      this.playWebPcmChunk(base64Pcm);
+    }
 
+    if (this.currentStatus !== 'SPEAKING' && this.currentStatus !== 'EXECUTING') {
+      this.setStatus('SPEAKING');
+    }
+  }
+
+  /**
+   * Web Audio Context PCM player (for Web runtime)
+   */
+  private playWebPcmChunk(base64Pcm: string): void {
+    if (typeof window === 'undefined') return;
     try {
-      const binaryString = atob(base64Pcm);
-      const len = binaryString.length;
+      const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (!this.webAudioContext && AudioCtx) {
+        this.webAudioContext = new AudioCtx({ sampleRate: 24000 });
+      }
+      const ctx = this.webAudioContext;
+      if (!ctx) return;
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+
+      const binary = atob(base64Pcm);
+      const len = binary.length;
       const bytes = new Uint8Array(len);
       for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
+        bytes[i] = binary.charCodeAt(i);
+      }
+      const int16 = new Int16Array(bytes.buffer);
+      const float32 = new Float32Array(int16.length);
+      for (let i = 0; i < int16.length; i++) {
+        float32[i] = int16[i] / 32768.0;
       }
 
-      const int16Array = new Int16Array(bytes.buffer);
-      const float32Array = new Float32Array(int16Array.length);
-      for (let i = 0; i < int16Array.length; i++) {
-        float32Array[i] = int16Array[i] / 32768.0;
-      }
-
-      const audioBuffer = ctx.createBuffer(1, float32Array.length, 24000);
-      audioBuffer.copyToChannel(float32Array, 0);
+      const audioBuffer = ctx.createBuffer(1, float32.length, 24000);
+      audioBuffer.copyToChannel(float32, 0);
 
       const source = ctx.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(ctx.destination);
 
-      const startTime = Math.max(ctx.currentTime, this.nextPlayTime);
+      const startTime = Math.max(ctx.currentTime, this.webNextPlayTime);
       source.start(startTime);
-      this.nextPlayTime = startTime + audioBuffer.duration;
-      this.activeBufferSources.push(source);
+      this.webNextPlayTime = startTime + audioBuffer.duration;
+      this.webActiveSources.push(source);
 
       source.onended = () => {
-        const idx = this.activeBufferSources.indexOf(source);
-        if (idx !== -1) this.activeBufferSources.splice(idx, 1);
-        if (this.activeBufferSources.length === 0 && this.currentStatus === 'SPEAKING') {
+        const idx = this.webActiveSources.indexOf(source);
+        if (idx !== -1) this.webActiveSources.splice(idx, 1);
+        if (this.webActiveSources.length === 0 && this.currentStatus === 'SPEAKING') {
           this.setStatus('LISTENING');
         }
       };
-
-      if (this.currentStatus !== 'SPEAKING') {
-        this.setStatus('SPEAKING');
-      }
-    } catch (err) {
-      console.warn('[VoiceAi] Error playing PCM chunk:', err);
+    } catch (e) {
+      console.warn('[VoiceAi] Web PCM error:', e);
     }
   }
 
   /**
-   * Starts persistent live microphone stream
+   * Receives microphone audio chunk from AudioBridge or native recorder
    */
-  private async startContinuousMicrophone(): Promise<void> {
-    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-      return;
+  public handleMicrophoneChunk(base64Pcm: string, rms?: number): void {
+    // If RMS energy indicates user speech while AI is speaking -> Instant client-side Barge-In!
+    if (rms !== undefined && rms > 0.04 && this.currentStatus === 'SPEAKING') {
+      console.log('⚡ User speech energy detected during AI playback -> Instant Barge-In triggered');
+      this.stopAllAudioPlayback();
     }
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: 1,
-          sampleRate: 16000,
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-      this.micStream = stream;
-
-      const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
-      const micCtx = new AudioCtx({ sampleRate: 16000 });
-      const micSource = micCtx.createMediaStreamSource(stream);
-
-      // 4096 samples buffer at 16kHz (~250ms per chunk)
-      const processor = micCtx.createScriptProcessor(4096, 1, 1);
-      this.micProcessor = processor;
-
-      processor.onaudioprocess = (e: any) => {
-        const inputData = e.inputBuffer.getChannelData(0);
-
-        // Simple VAD energy detection for instant client-side barge-in
-        let sumSquares = 0;
-        const pcm16 = new Int16Array(inputData.length);
-        for (let i = 0; i < inputData.length; i++) {
-          const s = Math.max(-1, Math.min(1, inputData[i]));
-          pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-          sumSquares += s * s;
-        }
-
-        const rms = Math.sqrt(sumSquares / inputData.length);
-        if (rms > 0.04 && this.currentStatus === 'SPEAKING') {
-          // User is speaking while AI is speaking -> Immediate Barge-in!
-          this.stopAllAudioPlayback();
-        }
-
-        // Convert PCM16 to Base64
-        let binary = '';
-        const bytes = new Uint8Array(pcm16.buffer);
-        const chunkSize = 8192;
-        for (let i = 0; i < bytes.length; i += chunkSize) {
-          binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize) as any);
-        }
-        const base64Audio = btoa(binary);
-
-        this.sendLiveAudioChunk(base64Audio);
-      };
-
-      micSource.connect(processor);
-      processor.connect(micCtx.destination);
-    } catch (err) {
-      console.warn('[VoiceAi] Mic streaming initialization notice:', err);
-    }
-
-    // Also start continuous Web Speech recognition to stream live transcribed text
-    this.startContinuousSpeechRecognition();
+    this.sendLiveAudioChunk(base64Pcm);
   }
 
   /**
-   * Continuous Speech Recognition for real-time text injection into Live session
+   * Receives user speech text from speech recognizer
    */
-  private startContinuousSpeechRecognition(): void {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      const SpeechRecognition =
-        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        try {
-          if (this.speechRecognizer) {
-            this.speechRecognizer.abort();
-          }
-          const rec = new SpeechRecognition();
-          rec.continuous = true;
-          rec.interimResults = true;
-          rec.lang = 'en-US';
+  public handleUserSpeechDetected(text: string, isFinal?: boolean): void {
+    const trimmed = text.trim();
+    if (!trimmed) return;
 
-          rec.onresult = (event: any) => {
-            const results = event.results;
-            const currentResult = results[results.length - 1];
-            const transcript = currentResult[0].transcript.trim();
+    this.updateUserUtterance(trimmed);
 
-            if (transcript) {
-              this.emitTranscript(transcript);
+    if (this.currentStatus === 'SPEAKING') {
+      this.stopAllAudioPlayback();
+    }
 
-              // If user speaks, trigger immediate audio interruption
-              if (this.currentStatus === 'SPEAKING') {
-                this.stopAllAudioPlayback();
-              }
-
-              if (currentResult.isFinal) {
-                this.sendLiveTextInput(transcript);
-              }
-            }
-          };
-
-          rec.onerror = (e: any) => {
-            // Ignore no-speech errors to stay listening continuously
-            if (e.error !== 'no-speech' && e.error !== 'aborted') {
-              console.warn('[VoiceAi] Speech recognition event:', e.error);
-            }
-          };
-
-          rec.onend = () => {
-            // Restart automatically if session is still active
-            if (this.currentStatus !== 'IDLE' && this.currentStatus !== 'COMPLETED') {
-              try {
-                rec.start();
-              } catch (e) {}
-            }
-          };
-
-          this.speechRecognizer = rec;
-          rec.start();
-        } catch (e) {
-          console.warn('[VoiceAi] Web Speech API start notice:', e);
-        }
-      }
+    if (isFinal) {
+      this.sendLiveTextInput(trimmed);
     }
   }
 
   /**
-   * Sends audio chunk to active live session
+   * Callback when AI audio playback completes naturally
    */
-  private sendLiveAudioChunk(base64Pcm: string): void {
+  public handleAiSpeechEnded(): void {
+    if (this.currentStatus === 'SPEAKING') {
+      this.setStatus('LISTENING');
+    }
+  }
+
+  /**
+   * Sends 16kHz PCM audio chunk to active live session
+   */
+  public sendLiveAudioChunk(base64Pcm: string): void {
     const payload = {
       audio: {
         data: base64Pcm,
@@ -391,7 +348,7 @@ class VoiceAiService {
   }
 
   /**
-   * Sends real-time text input into the Live session
+   * Sends text input into the Live session
    */
   public sendLiveTextInput(text: string): void {
     const trimmed = text.trim();
@@ -399,7 +356,7 @@ class VoiceAiService {
 
     this.stopAllAudioPlayback();
     this.setStatus('THINKING');
-    this.emitTranscript(trimmed);
+    this.updateUserUtterance(trimmed);
 
     const payload = { text: trimmed };
 
@@ -439,15 +396,21 @@ class VoiceAiService {
     };
     this.updateTaskState({});
 
+    this.conversation = {
+      aiUtterance: 'Connecting to SpecFinder AI...',
+      userUtterance: '',
+    };
+    this.conversationListeners.forEach((fn) => fn(this.conversation));
+
+    this.setStatus('CONNECTING');
+
     // 1. Verify Microphone Permission
     const perm = await this.ensureMicrophonePermission();
     if (!perm.granted) {
       this.setStatus('ERROR');
-      this.emitTranscript(perm.error || 'Microphone permission required for voice navigation.');
+      this.updateAiUtterance(perm.error || 'Microphone permission required for voice navigation.');
       return;
     }
-
-    this.setStatus('LISTENING');
 
     // 2. Connect to Live API over WebSocket
     const connected = await this.connectLiveSession();
@@ -456,12 +419,15 @@ class VoiceAiService {
       await this.connectDirectGeminiLive();
     }
 
-    // 3. Start persistent microphone stream
-    await this.startContinuousMicrophone();
+    // 3. Start audio bridge / microphone
+    if (this.audioBridge) {
+      this.audioBridge.startRecording();
+    } else if (Platform.OS === 'web') {
+      this.startWebMicrophone();
+    }
 
-    // 4. Trigger the REQUIRED starting greeting:
-    // "Hello and welcome to SpecFinder, an autonomous AI integrated service."
-    this.sendLiveTextInput('Start session and greet the user.');
+    // 4. Initial status ready
+    this.setStatus('LISTENING');
   }
 
   /**
@@ -472,12 +438,22 @@ class VoiceAiService {
       try {
         const baseUrl = getApiBaseUrl();
         const wsUrl = baseUrl.replace(/^http/, 'ws') + '/api/ai/live-stream';
+        console.log('[VoiceAi] Connecting to Live WebSocket at:', wsUrl);
 
         const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
-          console.log('✅ Connected to Gemini Live WebSocket proxy at', wsUrl);
+          console.log('✅ Connected to Gemini Live WebSocket proxy');
           this.wsConnection = ws;
+          this.setStatus('LISTENING');
+
+          // Keep-alive ping every 15 seconds
+          if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+          this.heartbeatTimer = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'ping' }));
+            }
+          }, 15000);
         };
 
         ws.onmessage = (event) => {
@@ -485,11 +461,14 @@ class VoiceAiService {
             const message = JSON.parse(event.data.toString());
 
             if (message.type === 'ready') {
+              this.setStatus('LISTENING');
               resolve(true);
             } else if (message.type === 'gemini') {
               this.handleGeminiLiveEvent(message.data);
             } else if (message.type === 'error') {
               console.warn('[VoiceAi] Server live error:', message.message);
+              this.setStatus('ERROR');
+              this.updateAiUtterance(`Connection error: ${message.message}`);
             }
           } catch (e) {
             console.error('[VoiceAi] Parse error:', e);
@@ -503,9 +482,13 @@ class VoiceAiService {
 
         ws.onclose = () => {
           console.log('[VoiceAi] WebSocket live stream closed');
+          if (this.heartbeatTimer) {
+            clearInterval(this.heartbeatTimer);
+            this.heartbeatTimer = null;
+          }
         };
 
-        setTimeout(() => resolve(Boolean(this.wsConnection)), 3500);
+        setTimeout(() => resolve(Boolean(this.wsConnection)), 4000);
       } catch (err) {
         resolve(false);
       }
@@ -513,7 +496,7 @@ class VoiceAiService {
   }
 
   /**
-   * Direct Gemini Live API WebSocket connection via @google/genai SDK
+   * Direct Gemini Live API WebSocket connection via @google/genai SDK (Fallback)
    */
   private async connectDirectGeminiLive(): Promise<void> {
     try {
@@ -529,12 +512,13 @@ class VoiceAiService {
           systemInstruction: {
             parts: [
               {
-                text: `You are "SpecFinder AI", an autonomous voice AI navigation assistant for SpecFinder.
-Your starting greeting must begin with: "Hello and welcome to SpecFinder, an autonomous AI integrated service." followed by naturally asking: "Tell me where you'd like to go or what you'd like me to find along your journey."
+                text: `You are "SpecFinder AI", an autonomous real-time voice AI navigation assistant for SpecFinder.
+Your starting greeting must begin with: "Hello and welcome to SpecFinder, an autonomous AI integrated service." followed by naturally asking: "Where would you like to go?"
 Keep spoken replies concise, natural (1-2 sentences), and direct.
-When user mentions a destination or says "take me to [X]", call resolve_destination.
-When user asks for a stop along the way (e.g. "Find a petrol station on the way"), call find_places.
-If the user changes their mind (e.g. "Actually take me to Kondapur instead"), call resolve_destination with the new destination.
+When the user specifies a destination (e.g. "I want to go to Charminar", "Take me to Gachibowli"), confirm verbally (e.g. "Sure. I'll help you get to Gachibowli.") and call resolve_destination.
+When the user asks for stops or places along the way (e.g. "Find a petrol pump on the way"), understand that "on the way" refers to the active journey, confirm verbally (e.g. "Sure, I'll look for a petrol pump along your route."), and call find_places with the category and target destination.
+If the user's request is ambiguous without a destination (e.g. "I need food"), do NOT navigate immediately; ask naturally: "Would you like me to find food nearby or along your journey?"
+If the user changes their mind or interrupts (e.g. "Actually change destination to Kondapur" or "Wait, take me to Kondapur"), acknowledge verbally (e.g. "Sure, I'll change the destination to Kondapur.") and call resolve_destination with the new destination.
 When the destination is confirmed, say "Starting navigation now." and call start_navigation.`,
               },
             ],
@@ -592,7 +576,12 @@ When the destination is confirmed, say "Starting navigation now." and call start
           ],
         },
         callbacks: {
-          onopen: () => console.log('Direct Gemini Live connected'),
+          onopen: () => {
+            console.log('Direct Gemini Live connected');
+            this.setStatus('LISTENING');
+            // Trigger opening greeting
+            session.sendRealtimeInput({ text: 'Greet the user with the required welcome greeting now.' });
+          },
           onmessage: (msg: any) => this.handleGeminiLiveEvent(msg),
           onerror: (err: any) => console.warn('Direct Live error:', err?.message),
           onclose: () => console.log('Direct Live closed'),
@@ -606,10 +595,10 @@ When the destination is confirmed, say "Starting navigation now." and call start
   }
 
   /**
-   * Handle incoming Gemini Live server events
+   * Handle incoming Gemini Live events
    */
   private async handleGeminiLiveEvent(msg: any): Promise<void> {
-    // 1. Check for interruption / barge-in signal
+    // 1. Check for interruption / barge-in signal from Gemini Live VAD
     if (msg.serverContent?.interrupted) {
       console.log('⚡ Gemini Live Interruption received — stopping audio playback immediately');
       this.stopAllAudioPlayback();
@@ -637,16 +626,23 @@ When the destination is confirmed, say "Starting navigation now." and call start
       }
 
       if (sc.outputTranscription?.text) {
-        this.emitTranscript(sc.outputTranscription.text);
+        const text = sc.outputTranscription.text;
+        // Append or update AI utterance
+        this.updateAiUtterance(this.conversation.aiUtterance ? `${this.conversation.aiUtterance} ${text}`.trim() : text.trim());
       }
 
       if (sc.inputTranscription?.text) {
-        this.emitTranscript(sc.inputTranscription.text);
+        this.updateUserUtterance(sc.inputTranscription.text);
       }
 
       if (sc.turnComplete) {
-        if (this.activeBufferSources.length === 0) {
-          this.setStatus('LISTENING');
+        // If not actively playing audio sources, return to LISTENING
+        if (this.currentStatus === 'THINKING' || this.currentStatus === 'SPEAKING') {
+          setTimeout(() => {
+            if (this.currentStatus === 'SPEAKING' || this.currentStatus === 'THINKING') {
+              this.setStatus('LISTENING');
+            }
+          }, 400);
         }
       }
     }
@@ -663,9 +659,13 @@ When the destination is confirmed, say "Starting navigation now." and call start
     const userCoords = locationService.getCoordinates();
 
     try {
-      if (call.name === 'resolve_destination' || call.name === 'calculate_route' || call.name === 'start_navigation') {
+      if (
+        call.name === 'resolve_destination' ||
+        call.name === 'calculate_route' ||
+        call.name === 'start_navigation'
+      ) {
         const destName = call.args?.destinationName || 'Gachibowli';
-        this.emitTranscript(`Resolving ${destName}...`);
+        this.updateAiUtterance(`Locating ${destName} and preparing the route...`);
 
         const places = await placesService.searchPlaces(destName, undefined, userCoords);
         const targetPlace: Place =
@@ -706,10 +706,7 @@ When the destination is confirmed, say "Starting navigation now." and call start
                 stopsCount: 0,
               };
 
-        // If user changed their mind while a previous task was running, verify generation!
-        if (currentGen !== this.taskGeneration) {
-          return;
-        }
+        if (currentGen !== this.taskGeneration) return;
 
         this.updateTaskState({
           destination: targetPlace.name,
@@ -726,17 +723,17 @@ When the destination is confirmed, say "Starting navigation now." and call start
           estimatedMinutes: chosenRoute.estimatedMinutes,
         };
 
-        // If navigation completion is requested or destination confirmed
-        if (call.name === 'start_navigation' || this.onAutonomousNavigationCb) {
-          setTimeout(() => {
-            if (this.onAutonomousNavigationCb && currentGen === this.taskGeneration) {
-              this.onAutonomousNavigationCb(targetPlace, chosenRoute);
-            }
-          }, 1800);
-        }
+        // If navigation trigger requested or destination is resolved:
+        // Automatically start navigation without asking redundant questions
+        setTimeout(() => {
+          if (this.onAutonomousNavigationCb && currentGen === this.taskGeneration) {
+            this.setStatus('COMPLETED');
+            this.onAutonomousNavigationCb(targetPlace, chosenRoute);
+          }
+        }, 1600);
       } else if (call.name === 'find_places') {
         const category = call.args?.category || 'petrol';
-        this.emitTranscript(`Finding ${category} along route...`);
+        this.updateAiUtterance(`Finding ${category} along your route...`);
 
         const places = await placesService.searchPlaces(category, undefined, userCoords);
         const waypoint = places.length > 0 ? places[0] : null;
@@ -779,6 +776,120 @@ When the destination is confirmed, say "Starting navigation now." and call start
     }
   }
 
+  /**
+   * Browser microphone capture for Web runtime
+   */
+  private async startWebMicrophone(): Promise<void> {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) return;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          sampleRate: 16000,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      this.webMicStream = stream;
+
+      const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+      const micCtx = new AudioCtx({ sampleRate: 16000 });
+      const micSource = micCtx.createMediaStreamSource(stream);
+      const processor = micCtx.createScriptProcessor(4096, 1, 1);
+      this.webMicProcessor = processor;
+
+      processor.onaudioprocess = (e: any) => {
+        const inputData = e.inputBuffer.getChannelData(0);
+        let sumSquares = 0;
+        const pcm16 = new Int16Array(inputData.length);
+        for (let i = 0; i < inputData.length; i++) {
+          const s = Math.max(-1, Math.min(1, inputData[i]));
+          pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+          sumSquares += s * s;
+        }
+
+        const rms = Math.sqrt(sumSquares / inputData.length);
+        if (rms > 0.04 && this.currentStatus === 'SPEAKING') {
+          this.stopAllAudioPlayback();
+        }
+
+        let binary = '';
+        const bytes = new Uint8Array(pcm16.buffer);
+        const chunkSize = 8192;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize) as any);
+        }
+        const base64Audio = btoa(binary);
+
+        this.sendLiveAudioChunk(base64Audio);
+      };
+
+      micSource.connect(processor);
+      processor.connect(micCtx.destination);
+    } catch (err) {
+      console.warn('[VoiceAi] Web mic start error:', err);
+    }
+
+    this.startWebSpeechRecognition();
+  }
+
+  /**
+   * Continuous Speech Recognition for Web runtime
+   */
+  private startWebSpeechRecognition(): void {
+    if (typeof window === 'undefined') return;
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    try {
+      if (this.webSpeechRecognizer) {
+        this.webSpeechRecognizer.abort();
+      }
+      const rec = new SpeechRecognition();
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.lang = 'en-US';
+
+      rec.onresult = (event: any) => {
+        const results = event.results;
+        const currentResult = results[results.length - 1];
+        const transcript = currentResult[0].transcript.trim();
+
+        if (transcript) {
+          this.updateUserUtterance(transcript);
+          if (this.currentStatus === 'SPEAKING') {
+            this.stopAllAudioPlayback();
+          }
+          if (currentResult.isFinal) {
+            this.sendLiveTextInput(transcript);
+          }
+        }
+      };
+
+      rec.onerror = (e: any) => {
+        if (e.error !== 'no-speech' && e.error !== 'aborted') {
+          console.warn('[VoiceAi] Web speech error:', e.error);
+        }
+      };
+
+      rec.onend = () => {
+        if (this.currentStatus !== 'IDLE' && this.currentStatus !== 'COMPLETED') {
+          try {
+            rec.start();
+          } catch (e) {}
+        }
+      };
+
+      this.webSpeechRecognizer = rec;
+      rec.start();
+    } catch (e) {
+      console.warn('[VoiceAi] Web speech init error:', e);
+    }
+  }
+
   public stopSpeaking(): void {
     this.stopAllAudioPlayback();
   }
@@ -792,10 +903,6 @@ When the destination is confirmed, say "Starting navigation now." and call start
     this.setStatus('LISTENING');
   }
 
-  public handleUserUtterance(text: string, _navCb?: any): void {
-    this.sendLiveTextInput(text);
-  }
-
   /**
    * Reset and close session
    */
@@ -803,25 +910,36 @@ When the destination is confirmed, say "Starting navigation now." and call start
     this.taskGeneration++;
     this.stopAllAudioPlayback();
 
-    if (this.micStream) {
-      try {
-        this.micStream.getTracks().forEach((t: any) => t.stop());
-      } catch (e) {}
-      this.micStream = null;
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
     }
 
-    if (this.micProcessor) {
+    if (this.audioBridge) {
       try {
-        this.micProcessor.disconnect();
+        this.audioBridge.stopRecording();
       } catch (e) {}
-      this.micProcessor = null;
     }
 
-    if (this.speechRecognizer) {
+    if (this.webMicStream) {
       try {
-        this.speechRecognizer.abort();
+        this.webMicStream.getTracks().forEach((t: any) => t.stop());
       } catch (e) {}
-      this.speechRecognizer = null;
+      this.webMicStream = null;
+    }
+
+    if (this.webMicProcessor) {
+      try {
+        this.webMicProcessor.disconnect();
+      } catch (e) {}
+      this.webMicProcessor = null;
+    }
+
+    if (this.webSpeechRecognizer) {
+      try {
+        this.webSpeechRecognizer.abort();
+      } catch (e) {}
+      this.webSpeechRecognizer = null;
     }
 
     if (this.wsConnection) {
@@ -839,7 +957,8 @@ When the destination is confirmed, say "Starting navigation now." and call start
     }
 
     this.setStatus('IDLE');
-    this.emitTranscript('');
+    this.conversation = { aiUtterance: '', userUtterance: '' };
+    this.conversationListeners.forEach((fn) => fn(this.conversation));
   }
 }
 
