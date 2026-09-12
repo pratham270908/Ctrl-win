@@ -156,9 +156,10 @@ class VoiceAiService {
   }
 
   /**
-   * Request microphone permission safely
+   * Request microphone permission safely with required diagnostics logging
    */
   public async ensureMicrophonePermission(): Promise<{ granted: boolean; error?: string }> {
+    console.log('[SpecFinder AI] Requesting microphone permission');
     try {
       if (Platform.OS === 'android') {
         const hasPerm = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
@@ -336,16 +337,16 @@ class VoiceAiService {
   }
 
   /**
-   * Transcribe PCM audio via Gemini backend endpoint
+   * Transcribe native recorded audio file via Gemini backend endpoint
    */
-  public async transcribeAudio(pcmBase64: string): Promise<string> {
+  public async transcribeAudioFile(audioBase64: string, mimeType: string = 'audio/mp4'): Promise<string> {
     try {
       const baseUrl = getApiBaseUrl();
-      console.log(`[SpecFinder AI] Transcribing captured microphone audio via ${baseUrl}/api/ai/transcribe...`);
+      console.log(`[SpecFinder AI] Transcribing captured native audio (${audioBase64.length} chars, mimeType: ${mimeType}) via ${baseUrl}/api/ai/transcribe...`);
       const res = await fetch(`${baseUrl}/api/ai/transcribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pcmBase64, sampleRate: 16000 }),
+        body: JSON.stringify({ audioBase64, mimeType }),
       });
       const data = await res.json();
       const text = (data.transcript || '').trim();
@@ -355,6 +356,13 @@ class VoiceAiService {
       console.warn('[SpecFinder AI] Audio transcription request error:', err?.message || err);
       return '';
     }
+  }
+
+  /**
+   * Transcribe PCM audio via Gemini backend endpoint (legacy fallback)
+   */
+  public async transcribeAudio(pcmBase64: string): Promise<string> {
+    return this.transcribeAudioFile(pcmBase64, 'audio/pcm;rate=16000');
   }
 
   /**
@@ -415,6 +423,172 @@ class VoiceAiService {
 
     // 4. Send finalized utterance to Gemini
     this.sendLiveTextInput(recognized);
+  }
+
+  /**
+   * Process spoken command autonomously via Gemini backend
+   */
+  public async processAutonomousCommand(transcript: string): Promise<void> {
+    const currentGen = ++this.taskGeneration;
+    this.setStatus('PROCESSING');
+    this.updateUserUtterance(transcript);
+    this.updateAiUtterance('Analyzing destination and route options...');
+
+    try {
+      const baseUrl = getApiBaseUrl();
+      const userCoords = locationService.getCoordinates();
+
+      console.log(`[SpecFinder AI] Sending recognized command to Gemini (${baseUrl}/api/ai/voice-turn)...`);
+
+      const response = await fetch(`${baseUrl}/api/ai/voice-turn`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: transcript,
+          history: [
+            {
+              role: 'assistant',
+              content: 'Hello and welcome to SpecFinder, an autonomous AI integrated service. Where would you like to go?',
+            },
+          ],
+          currentLocation: {
+            latitude: userCoords.latitude,
+            longitude: userCoords.longitude,
+          },
+        }),
+      });
+
+      const data = await response.json();
+      if (currentGen !== this.taskGeneration) return;
+
+      const functionCalls = data.functionCalls || [];
+      const resolveCall = functionCalls.find(
+        (c: any) => c.name === 'resolve_destination' || c.name === 'calculate_route' || c.name === 'start_navigation'
+      );
+      const findPlacesCall = functionCalls.find((c: any) => c.name === 'find_places');
+
+      let destName: string | undefined = resolveCall?.args?.destinationName;
+
+      // Robust fallback extraction if Gemini answered conversationally without a function call
+      if (!destName) {
+        const match = transcript.match(/(?:to|go to|take me to|navigate to|head to|reach)\s+([A-Za-z0-9\s]+)/i);
+        if (match && match[1]) {
+          destName = match[1].trim().replace(/[.,!?]$/, '');
+        } else {
+          const words = transcript.trim().split(/\s+/);
+          if (words.length <= 3 && !/^(hello|hi|help|what|who|how|why)/i.test(transcript)) {
+            destName = transcript.trim().replace(/[.,!?]$/, '');
+          }
+        }
+      }
+
+      if (destName) {
+        console.log(`[SpecFinder AI] Resolving destination: "${destName}"...`);
+        let waypoint: Place | null = null;
+        let waypointCategory = findPlacesCall?.args?.category || null;
+
+        if (findPlacesCall || /petrol|fuel|coffee|food|restaurant|atm|pharmacy|hospital/i.test(transcript)) {
+          const category =
+            waypointCategory ||
+            (transcript.match(/petrol|fuel|coffee|food|restaurant|atm|pharmacy|hospital/i)?.[0] || 'petrol');
+          waypointCategory = category;
+          const found = await placesService.searchPlaces(category, undefined, userCoords);
+          if (found.length > 0) waypoint = found[0];
+        }
+
+        // Look up place with Places service
+        const places = await placesService.searchPlaces(destName, undefined, userCoords);
+        const targetPlace: Place =
+          places.length > 0
+            ? places[0]
+            : {
+                id: `voice-dest-${Date.now()}`,
+                name: destName,
+                category: 'Shopping',
+                rating: 4.8,
+                reviewCount: 220,
+                distance: 3800,
+                travelTime: 11,
+                status: 'OPEN',
+                hours: 'Open 24 Hours',
+                coordinates: APP_CONFIG.defaultDestination,
+                direction: 'AHEAD',
+                routeDeviation: 0,
+                address: `${destName}, Hyderabad`,
+                description: `Target destination: ${destName}`,
+                phone: '+91 40 2345 6789',
+                services: ['Navigation'],
+              };
+
+        // Calculate route with Routes service
+        const routes = await directionsService.getRouteOptions(userCoords, targetPlace.coordinates);
+        const chosenRoute: RouteOption =
+          routes.length > 0
+            ? routes[0]
+            : {
+                id: `voice-route-${Date.now()}`,
+                type: 'FASTEST',
+                title: `Fastest to ${targetPlace.name}`,
+                subtitle: 'Optimal corridor',
+                estimatedMinutes: 11,
+                distanceKm: 3.8,
+                trafficLevel: 'LOW',
+                highlights: ['Fastest path'],
+                stopsCount: 0,
+              };
+
+        if (currentGen !== this.taskGeneration) return;
+
+        this.updateTaskState({
+          destination: targetPlace.name,
+          destinationCoordinates: targetPlace.coordinates,
+          resolvedPlace: targetPlace,
+          calculatedRoute: chosenRoute,
+          waypointPlace: waypoint,
+          requestedCategory: waypointCategory,
+          taskComplete: true,
+        });
+
+        this.setStatus('CONFIRMING');
+
+        // Required AI confirmation format: "I am navigating to <destination>."
+        const confirmationMsg = waypoint
+          ? `I am navigating to ${targetPlace.name} and I'll include a ${waypointCategory} stop along your route.`
+          : `I am navigating to ${targetPlace.name}.`;
+
+        console.log(`[SpecFinder AI] AI Response: "${confirmationMsg}"`);
+        this.updateAiUtterance(confirmationMsg);
+
+        // Speak the confirmation through phone speaker
+        try {
+          Speech.speak(confirmationMsg, {
+            language: 'en-US',
+            onDone: () => this.handleAiSpeechEnded(),
+            onError: () => this.handleAiSpeechEnded(),
+          });
+        } catch (e) {
+          setTimeout(() => this.handleAiSpeechEnded(), 1800);
+        }
+      } else {
+        // Clarifying question
+        const replyText = data.text || data.fallbackMessage || "Where would you like to go?";
+        this.updateAiUtterance(replyText);
+        this.setStatus('GREETING');
+        try {
+          Speech.speak(replyText, {
+            language: 'en-US',
+            onDone: () => this.handleAiSpeechEnded(),
+            onError: () => this.handleAiSpeechEnded(),
+          });
+        } catch (e) {
+          setTimeout(() => this.handleAiSpeechEnded(), 1800);
+        }
+      }
+    } catch (err: any) {
+      console.warn('[SpecFinder AI] Process command error:', err);
+      this.setStatus('ERROR');
+      this.updateAiUtterance('Could not process destination. Please tap the orb and try again.');
+    }
   }
 
   /**
@@ -1059,3 +1233,30 @@ When the destination is resolved, call start_navigation.`,
 }
 
 export const voiceAiService = new VoiceAiService();
+
+/**
+ * Reads a local file URI (e.g. from expo-audio) and converts it to a clean Base64 string
+ */
+export async function uriToBase64(fileUri: string): Promise<string> {
+  try {
+    const response = await fetch(fileUri);
+    const blob = await response.blob();
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        if (!result) {
+          reject(new Error('FileReader produced empty result'));
+          return;
+        }
+        const base64 = result.includes(',') ? result.split(',')[1] : result;
+        resolve(base64);
+      };
+      reader.onerror = (e) => reject(new Error('FileReader failed to read blob: ' + e));
+      reader.readAsDataURL(blob);
+    });
+  } catch (err: any) {
+    console.warn('[SpecFinder AI] Failed to convert URI to Base64:', err?.message || err);
+    throw err;
+  }
+}

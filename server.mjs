@@ -11,7 +11,7 @@ dotenv.config();
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -833,11 +833,14 @@ CRITICAL RULES FOR CONVERSATION:
   }
 });
 
-// 5.5 AUDIO TRANSCRIPTION ENDPOINT (DIAGNOSTIC & SPEECH-TO-TEXT)
+// 5.5 AUDIO TRANSCRIPTION ENDPOINT (NATIVE AUDIO SPEECH-TO-TEXT)
 app.post('/api/ai/transcribe', async (req, res) => {
   try {
-    const { pcmBase64, sampleRate = 16000 } = req.body;
-    if (!pcmBase64) {
+    const audioData = req.body.audioBase64 || req.body.pcmBase64;
+    let mimeType = req.body.mimeType || (req.body.pcmBase64 ? 'audio/pcm;rate=16000' : 'audio/mp4');
+    if (mimeType === 'audio/m4a') mimeType = 'audio/mp4';
+
+    if (!audioData) {
       return res.status(400).json({ error: 'No audio provided' });
     }
 
@@ -845,7 +848,7 @@ app.post('/api/ai/transcribe', async (req, res) => {
       return res.status(500).json({ error: 'Gemini AI not initialized' });
     }
 
-    console.log(`[SpecFinder AI] Processing audio input (${pcmBase64.length} chars, sampleRate: ${sampleRate}Hz)`);
+    console.log(`[SpecFinder AI] Processing native audio input (${audioData.length} chars, mimeType: ${mimeType})`);
 
     const response = await ai.models.generateContent({
       model: "gemini-3.5-flash-lite",
@@ -855,8 +858,8 @@ app.post('/api/ai/transcribe', async (req, res) => {
           parts: [
             {
               inlineData: {
-                mimeType: `audio/pcm;rate=${sampleRate}`,
-                data: pcmBase64
+                mimeType,
+                data: audioData
               }
             },
             {
@@ -868,7 +871,7 @@ app.post('/api/ai/transcribe', async (req, res) => {
     });
 
     const transcript = (response.text || "").trim();
-    console.log(`[SpecFinder AI] Recognized speech: "${transcript}"`);
+    console.log(`[SpecFinder AI] Spoken command recognized: "${transcript}"`);
     res.json({ success: true, transcript });
   } catch (err) {
     console.error('[Transcribe Error]:', err?.message || err);
